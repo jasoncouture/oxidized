@@ -6,7 +6,6 @@ edition = "2021"
 [dependencies]
 bootloader = { version = "0.9.8", features = ["map_physical_memory"]}
 kernel_vga_buffer = { path = "kernel_vga_buffer" }
-elf = "0.7.0"
 
 
 [target.'cfg(target_arch = "x86_64")'.dependencies]
