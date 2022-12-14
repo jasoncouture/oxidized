@@ -1,8 +1,8 @@
 #![no_std]
-use volatile::Volatile;
-use lazy_static::lazy_static;
 use core::fmt;
+use lazy_static::lazy_static;
 use spin::Mutex;
+use volatile::Volatile;
 
 #[allow(dead_code)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -29,21 +29,26 @@ pub enum Color {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[repr(transparent)]
 struct ColorCode {
-    color_code: u8
+    color_code: u8,
 }
-
 
 #[allow(dead_code)]
 impl ColorCode {
     fn new(foreground: Color, background: Color) -> ColorCode {
-        return ColorCode{ color_code: (background as u8) << 4 | (foreground as u8) };
+        return ColorCode {
+            color_code: (background as u8) << 4 | (foreground as u8),
+        };
     }
     pub fn with_foreground(&self, foreground: Color) -> ColorCode {
-        return ColorCode{color_code: (self.color_code & 0xF0) | (foreground as u8)};
+        return ColorCode {
+            color_code: (self.color_code & 0xF0) | (foreground as u8),
+        };
     }
 
     pub fn with_background(&self, background: Color) -> ColorCode {
-        return ColorCode{color_code: (background as u8) << 4 | (self.color_code & 0x0F)};
+        return ColorCode {
+            color_code: (background as u8) << 4 | (self.color_code & 0x0F),
+        };
     }
 }
 
@@ -56,8 +61,6 @@ struct ScreenChar {
 
 const BUFFER_HEIGHT: usize = 25;
 const BUFFER_WIDTH: usize = 80;
-
-
 
 struct VgaTextBuffer {
     screen_buffer: [[Volatile<ScreenChar>; BUFFER_WIDTH]; BUFFER_HEIGHT],
@@ -77,7 +80,7 @@ impl VgaTextWriter {
     pub fn set_background_color(&mut self, color: Color) {
         self.color_code = self.color_code.with_background(color);
     }
-    
+
     pub fn set_colors(&mut self, foreground: Color, background: Color) {
         self.color_code = ColorCode::new(foreground, background);
     }
@@ -114,6 +117,12 @@ impl VgaTextWriter {
         self.column_position = 0;
     }
 
+    pub fn clear(&mut self) {
+        for r in 0..BUFFER_HEIGHT {
+            self.clear_row(r);
+        }
+    }
+
     fn clear_row(&mut self, row: usize) {
         let blank = ScreenChar {
             ascii_character: b' ',
@@ -132,7 +141,6 @@ impl VgaTextWriter {
                 // not part of printable ASCII range
                 _ => self.write_byte(0xfe),
             }
-
         }
     }
 }
@@ -151,7 +159,6 @@ lazy_static! {
         buffer: unsafe { &mut *(0xb8000 as *mut VgaTextBuffer) },
     });
 }
-
 
 #[macro_export]
 macro_rules! print {

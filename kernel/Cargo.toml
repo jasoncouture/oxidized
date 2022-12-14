@@ -6,34 +6,21 @@ edition = "2021"
 [dependencies]
 bootloader = { version = "0.9.8", features = ["map_physical_memory"]}
 kernel_vga_buffer = { path = "kernel_vga_buffer" }
+volatile = "0.2.6"
+lazy_static = { version = "1.0", features = ["spin_no_std"] }
+spin = "0.5.2"
+uart_16550 = "0.2.0"
+pal = { path = "pal" }
 
 
 [target.'cfg(target_arch = "x86_64")'.dependencies]
-x86_64 = "0.14.2"
+pal_x86_64 = { path = "pal_x86_64" }
 
 [package.metadata.bootimage]
-# The cargo subcommand that will be used for building the kernel.
-#
-# For building using the `cargo-xbuild` crate, set this to `xbuild`.
 build-command = ["build"]
-# The command invoked with the created bootimage (the "{}" will be replaced
-# with the path to the bootable disk image)
-# Applies to `bootimage run` and `bootimage runner`
 run-command = ["qemu-system-x86_64", "-drive", "format=raw,file={}"]
-
-# Additional arguments passed to the run command for non-test executables
-# Applies to `bootimage run` and `bootimage runner`
-#run-args = []
-
-# Additional arguments passed to the run command for test executables
-# Applies to `bootimage runner`
-test-args = ["-device", "isa-debug-exit,iobase=0xf4,iosize=0x04"]
-
-# An exit code that should be considered as success for test executables
+run-args = []
+test-args = ["-device", "isa-debug-exit,iobase=0xf4,iosize=0x04", "-serial", "stdio", "-display", "none"]
 test-success-exit-code = 3
-
-# The timeout for running a test through `bootimage test` or `bootimage runner` (in seconds)
-#test-timeout = 300
-
-# Whether the `-no-reboot` flag should be passed to test executables
-#test-no-reboot = true
+test-timeout = 300
+test-no-reboot = true

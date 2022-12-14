@@ -26,7 +26,12 @@ version = "0.1.0"
 dependencies = [
  "bootloader",
  "kernel_vga_buffer",
- "x86_64",
+ "lazy_static",
+ "pal",
+ "pal_x86_64",
+ "spin",
+ "uart_16550",
+ "volatile 0.2.7",
 ]
 
 [[package]]
@@ -48,6 +53,21 @@ dependencies = [
 ]
 
 [[package]]
+name = "pal"
+version = "0.1.0"
+
+[[package]]
+name = "pal_x86_64"
+version = "0.1.0"
+dependencies = [
+ "lazy_static",
+ "pal",
+ "spin",
+ "uart_16550",
+ "x86_64",
+]
+
+[[package]]
 name = "rustversion"
 version = "1.0.9"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -58,6 +78,17 @@ name = "spin"
 version = "0.5.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "6e63cff320ae2c57904679ba7cb63280a3dc4613885beafb148ee7bf9aa9042d"
+
+[[package]]
+name = "uart_16550"
+version = "0.2.18"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "b074eb9300ad949edd74c529c0e8d451625af71bb948e6b65fe69f72dc1363d9"
+dependencies = [
+ "bitflags",
+ "rustversion",
+ "x86_64",
+]
 
 [[package]]
 name = "volatile"
