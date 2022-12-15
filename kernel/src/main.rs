@@ -11,8 +11,18 @@ mod unit_tests;
 use kernel_vga_buffer::{println, WRITER, Color};
 use pal::HardwareControl;
 use pal_x86_64::PAL_PLATFORM;
-#[no_mangle]
-pub extern "C" fn _start() {
+
+const CONFIG: bootloader_api::BootloaderConfig = {
+    let mut config = bootloader_api::BootloaderConfig::new_default();
+    config.kernel_stack_size = 100 * 1024; // 100 KiB
+    config
+};
+
+bootloader_api::entry_point!(kernel_boot, config = &CONFIG);
+
+
+#[allow(unreachable_code)]
+fn kernel_boot(_boot_info: &'static mut bootloader_api::BootInfo) -> ! {
     early_init();
     test_hook();
     kernel_main();
@@ -35,7 +45,7 @@ fn early_init() {
     WRITER.lock().set_foreground_color(Color::LightGreen);
 }
 
-fn kernel_main() {
+fn kernel_main() -> ! {
     PAL_PLATFORM.halt();
 }
 
