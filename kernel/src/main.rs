@@ -8,13 +8,13 @@ include!(concat!(env!("OUT_DIR"), "/metadata_constants.rs"));
 mod test_runner;
 mod panic;
 mod unit_tests;
-use kernel_vga_buffer::{println, WRITER, Color};
-use pal::HardwareControl;
-use pal_x86_64::PAL_PLATFORM;
+use pal::*;
+use pal_x86_64::*;
 
 const CONFIG: bootloader_api::BootloaderConfig = {
     let mut config = bootloader_api::BootloaderConfig::new_default();
     config.kernel_stack_size = 100 * 1024; // 100 KiB
+    config.mappings.aslr = true;
     config
 };
 
@@ -36,13 +36,10 @@ fn test_hook() {
 
 fn early_init() {
     PAL_PLATFORM.init();
-    WRITER.lock().set_foreground_color(Color::Red);
     println!("Oxidized kernel");
-    WRITER.lock().set_foreground_color(Color::White);
     println!("Version     : {}", METADATA_VERSION.unwrap_or("unknown"));
     println!("Architecture: {}", METADATA_BUILD_ARCH);
     println!("Compiler    : {}", METADATA_BUILD_TARGET);
-    WRITER.lock().set_foreground_color(Color::LightGreen);
 }
 
 fn kernel_main() -> ! {

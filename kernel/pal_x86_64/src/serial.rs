@@ -1,3 +1,5 @@
+use core::fmt;
+
 //use alloc::string::String;
 use uart_16550::SerialPort;
 use spin::Mutex;
@@ -18,14 +20,14 @@ lazy_static! {
 
 
 #[doc(hidden)]
-pub fn _print(args: ::core::fmt::Arguments) {
+pub fn _print(args: fmt::Arguments) {
     use core::fmt::Write;
     SERIAL1.lock().write_fmt(args).expect("Printing to serial failed");
 }
 
 /// Prints to the host through the serial interface.
 #[macro_export]
-macro_rules! serial_print {
+macro_rules! print {
     ($($arg:tt)*) => {
         $crate::serial::_print(format_args!($($arg)*));
     };
@@ -33,9 +35,9 @@ macro_rules! serial_print {
 
 /// Prints to the host through the serial interface, appending a newline.
 #[macro_export]
-macro_rules! serial_println {
-    () => ($crate::serial_print!("\n"));
-    ($fmt:expr) => ($crate::serial_print!(concat!($fmt, "\n")));
-    ($fmt:expr, $($arg:tt)*) => ($crate::serial_print!(
+macro_rules! println {
+    () => ($crate::print!("\n"));
+    ($fmt:expr) => ($crate::print!(concat!($fmt, "\n")));
+    ($fmt:expr, $($arg:tt)*) => ($crate::print!(
         concat!($fmt, "\n"), $($arg)*));
 }

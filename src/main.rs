@@ -25,7 +25,8 @@ fn create_command(image_path: &str, uefi: bool) -> Command {
         cmd.arg("-bios").arg(ovmf_prebuilt::ovmf_pure_efi());
     }
 
-    cmd.arg("-drive").arg(format!("format=raw,file={image_path}"));
+    cmd.arg("-drive").arg(format!("format=raw,file={image_path}"))
+        .arg("-serial").arg("stdio");
 
     return cmd;
 }
