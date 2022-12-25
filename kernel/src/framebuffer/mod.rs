@@ -1,25 +1,25 @@
 use core::cmp::min;
 
 use bootloader_api::{info::*, *};
-
-mod console;
+use lazy_static::*;
+use spin::Mutex;
 
 #[derive(Debug, Clone, Copy)]
-struct Point(usize, usize);
+pub(crate) struct Point(pub usize, pub usize);
 
 impl Point {
-    fn x(self: &Self) -> usize {
+    pub(crate) fn x(self: &Self) -> usize {
         self.0
     }
 
-    fn y(self: &Self) -> usize {
+    pub(crate) fn y(self: &Self) -> usize {
         self.1
     }
 }
 
 struct Pixel(Color, Point);
 
-impl Pixel{
+impl Pixel {
     fn color(self: &Self) -> Color {
         self.0
     }
@@ -29,19 +29,48 @@ impl Pixel{
     }
 }
 
-trait Drawable {
-    fn draw(self: &Self, x: usize, y:usize, frame_buffer: &mut KernelFramebuffer, foreground: Color, background: Color);
+pub(crate) trait Drawable {
+    fn draw(
+        self: &Self,
+        x: usize,
+        y: usize,
+        frame_buffer: &mut super::KernelFramebuffer,
+        foreground: &Color,
+        background: &Color,
+    );
 }
 
-struct KernelFramebuffer {
-    frame_buffer: Option<&'static mut FrameBuffer>,
+static mut FRAME_BUFFER_INTERNAL: KernelFramebuffer = KernelFramebuffer { frame_buffer: None };
+pub struct FrameBufferWrapper {}
+impl FrameBufferWrapper {
+    pub(crate) fn get_framebuffer(self: &Self) -> Option<&mut KernelFramebuffer> {
+        unsafe {
+            Some(&mut FRAME_BUFFER_INTERNAL)
+        }
+    }
+
+    pub(crate) fn set_framebuffer(self: &Self, frame_buffer: Option<&'static mut FrameBuffer>) {
+        unsafe { FRAME_BUFFER_INTERNAL.frame_buffer = frame_buffer; }
+    }
+}
+
+lazy_static! {
+    pub static ref FRAME_BUFFER: Mutex<FrameBufferWrapper> = Mutex::new(FrameBufferWrapper{});
+}
+
+pub fn init_framebuffer(frame_buffer: Option<&'static mut FrameBuffer>) {
+    FRAME_BUFFER.lock().set_framebuffer(frame_buffer);
+}
+
+pub(crate) struct KernelFramebuffer {
+    pub(crate) frame_buffer: Option<&'static mut FrameBuffer>,
 }
 
 #[derive(Debug, Clone, Copy)]
-struct Color {
-    r: u8,
-    g: u8,
-    b: u8,
+pub(crate) struct Color {
+    pub r: u8,
+    pub g: u8,
+    pub b: u8,
 }
 
 fn to_percent(num: u8) -> f32 {
@@ -51,6 +80,25 @@ fn to_percent(num: u8) -> f32 {
 impl Color {
     pub fn new(r: u8, g: u8, b: u8) -> Color {
         Color { r: r, g: g, b: b }
+    }
+    pub fn red() -> Color {
+        Color { r: 255, g: 0, b: 0 }
+    }
+    pub fn green() -> Color {
+        Color { r: 0, g: 255, b: 0 }
+    }
+    pub fn blue() -> Color {
+        Color { r: 0, g: 0, b: 0 }
+    }
+    pub fn white() -> Color {
+        Color {
+            r: 255,
+            g: 255,
+            b: 255,
+        }
+    }
+    pub fn black() -> Color {
+        Color { r: 0, g: 0, b: 0 }
     }
     pub fn to_framebuffer_color(self: &Self, pixel_format: PixelFormat, buffer: &mut [u8]) {
         if pixel_format == PixelFormat::Bgr {
@@ -91,10 +139,30 @@ impl KernelFramebuffer {
 
     fn get_buffer_start_offset(x: usize, y: usize, frame_buffer_info: FrameBufferInfo) -> usize {
         let y_start = (y % frame_buffer_info.height) * frame_buffer_info.stride;
-        let x_start = (x % frame_buffer_info.width) * frame_buffer_info.bytes_per_pixel;
-        x_start + y_start
+        let x_start = x % frame_buffer_info.width;
+        (x_start + y_start) * frame_buffer_info.bytes_per_pixel
     }
-    fn set_pixel(self: &mut Self, x: usize, y: usize, color: Color) {
+    pub fn clear(self: &mut Self, color: &Color) {
+        if self.frame_buffer.is_none() {
+            return;
+        }
+
+        let fb = self.frame_buffer.as_deref_mut().unwrap();
+        if color.r == 0 && color.g == 0 && color.b == 0 {
+            fb.buffer_mut().fill(0);
+            return;
+        }
+        let fbi = fb.info();
+        if Self::is_supported(fbi.pixel_format) == false {
+            return;
+        }
+        for x in 0..fbi.width as usize {
+            for y in 0..fbi.height as usize {
+                self.set_pixel(x, y, color)
+            }
+        }
+    }
+    pub fn set_pixel(self: &mut Self, x: usize, y: usize, color: &Color) {
         if self.frame_buffer.is_none() {
             return;
         }
@@ -112,6 +180,37 @@ impl KernelFramebuffer {
         for i in 0..loop_count {
             let offset = start + i;
             fb_buffer[offset] = buf[i];
+        }
+    }
+
+    pub(crate) fn shift_up(self: &mut Self, lines: usize) {
+
+        let fb = self.frame_buffer.as_mut().unwrap();
+        let info = fb.info();
+        let line_size = info.stride * info.bytes_per_pixel;
+        let block_size = line_size * lines;
+        let mut_framebuffer = fb.buffer_mut();
+        let mut y_pos: usize = 0;
+        loop {
+            let src_offset = (y_pos + lines) * line_size;
+            let dst_offset = y_pos * line_size;
+            if y_pos >= (info.height - lines) {
+                break;
+            }
+            Self::copy_range(mut_framebuffer, src_offset, dst_offset, block_size);
+            y_pos += lines;
+        }
+        let clear_color = &Color::black();
+        for y in (info.height - lines)..(info.height) {
+            for x in 0..info.width {
+                self.set_pixel(x, y, clear_color);
+            }
+        }
+    }
+
+    fn copy_range(dst: &mut [u8], src_offset: usize, dst_offset: usize, count: usize) {
+        for i in 0..count {
+            dst[i+dst_offset] = dst[i+src_offset];
         }
     }
 }
