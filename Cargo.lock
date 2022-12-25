@@ -288,11 +288,10 @@ version = "0.1.0"
 dependencies = [
  "bootloader_api",
  "lazy_static",
- "pal",
- "pal_x86_64",
  "spin 0.9.4",
  "uart_16550",
  "volatile",
+ "x86_64",
 ]
 
 [[package]]
@@ -396,21 +395,6 @@ name = "ovmf-prebuilt"
 version = "0.1.0-alpha.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "fa50141d081512ab30fd9e7e7692476866df5098b028536ad6680212e717fa8d"
-
-[[package]]
-name = "pal"
-version = "0.1.0"
-
-[[package]]
-name = "pal_x86_64"
-version = "0.1.0"
-dependencies = [
- "lazy_static",
- "pal",
- "spin 0.9.4",
- "uart_16550",
- "x86_64",
-]
 
 [[package]]
 name = "proc-macro2"

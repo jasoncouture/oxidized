@@ -10,11 +10,11 @@ volatile = "0.4.5"
 lazy_static = { version = "1.0", features = ["spin_no_std"] }
 spin = { version = "0.9.4" }
 uart_16550 = "0.2.0"
-pal = { path = "pal" }
 
 
 [target.'cfg(target_arch = "x86_64")'.dependencies]
-pal_x86_64 = { path = "pal_x86_64" }
+x86_64 = "0.14.10"
+# pal_x86_64 = { path = "pal_x86_64" }
 
 [package.metadata.bootimage]
 build-command = ["build"]

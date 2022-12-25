@@ -8,8 +8,7 @@ include!(concat!(env!("OUT_DIR"), "/metadata_constants.rs"));
 mod test_runner;
 mod panic;
 mod unit_tests;
-use pal::*;
-use pal_x86_64::*;
+mod framebuffer;
 
 const CONFIG: bootloader_api::BootloaderConfig = {
     let mut config = bootloader_api::BootloaderConfig::new_default();
@@ -22,28 +21,28 @@ bootloader_api::entry_point!(kernel_boot, config = &CONFIG);
 
 
 #[allow(unreachable_code)]
-fn kernel_boot(_boot_info: &'static mut bootloader_api::BootInfo) -> ! {
-    early_init();
+fn kernel_boot(boot_info: &'static mut bootloader_api::BootInfo) -> ! {
+
+    early_init(boot_info);
     test_hook();
     kernel_main();
-    panic!("Kernel exited, this should never happen.");
+    loop { 
+        x86_64::instructions::interrupts::disable();
+        x86_64::instructions::hlt();
+    }
+}
+
+fn early_init(boot_info: &'static mut bootloader_api::BootInfo) {
+    
+}
+
+fn kernel_main() {
+    
 }
 
 fn test_hook() {
     #[cfg(test)]
     test_main();
-}
-
-fn early_init() {
-    PAL_PLATFORM.init();
-    println!("Oxidized kernel");
-    println!("Version     : {}", METADATA_VERSION.unwrap_or("unknown"));
-    println!("Architecture: {}", METADATA_BUILD_ARCH);
-    println!("Compiler    : {}", METADATA_BUILD_TARGET);
-}
-
-fn kernel_main() -> ! {
-    PAL_PLATFORM.halt();
 }
 
 
