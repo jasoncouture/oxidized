@@ -1,5 +1,3 @@
-
-
 use bitvec::prelude::*;
 use bootloader_api::info::{MemoryRegionKind, MemoryRegions};
 use linked_list_allocator::LockedHeap;
@@ -25,8 +23,15 @@ static ALLOCATOR: LockedHeap = LockedHeap::empty();
 pub const PAGE_SIZE: usize = 4096;
 pub const KERNEL_HEAP_START: usize = 0x_4444_4444_0000;
 pub const KERNEL_HEAP_PAGES: usize = 512;
-pub const KERNEL_HEAP_SIZE: usize = KERNEL_HEAP_PAGES * PAGE_SIZE; // 2mb
-pub const MAX_SUPPORTED_PAGES: usize = 1073741824;
+pub const KERNEL_HEAP_SIZE: usize = KERNEL_HEAP_PAGES * PAGE_SIZE;
+pub const ONE_MEGABYTE: usize = 1024 * 1024;
+pub const ONE_GIGABTYE: usize = ONE_MEGABYTE * 1024;
+pub const ONE_TERABYTE: usize = ONE_GIGABTYE * 1024;
+#[cfg(any(target_arch = "x86_64", target_arch = "aarch64"))]
+pub const MAX_SUPPORTED_MEMORY: usize = ONE_TERABYTE * 8;
+#[cfg(target_arch = "x86")]
+pub const MAX_SUPPORTED_MEMORY: usize = ONE_GIGABTYE * 4;
+pub const MAX_SUPPORTED_PAGES: usize = MAX_SUPPORTED_MEMORY / PAGE_SIZE;
 pub const PAGE_STORAGE_SIZE: usize = MAX_SUPPORTED_PAGES / 8;
 
 pub struct BootInfoFrameAllocator {
@@ -83,7 +88,6 @@ unsafe impl FrameAllocator<Size4KiB> for BootInfoFrameAllocator {
         loop {
             let mut current_frame = self.next;
             for frame in self.usable_frames().skip(current_frame) {
-                
                 let frame_address = frame.start_address().as_u64() as usize;
                 if frame_address == 0 {
                     continue;
