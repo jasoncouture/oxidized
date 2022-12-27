@@ -61,8 +61,12 @@ impl Console {
         let glyph = self.font.glyph(c as u8);
         let mut x_offset: usize = unsafe { CONSOLE_X_POSITION };
         let locked = FRAME_BUFFER.lock();
-        let frame_buffer = locked.get_framebuffer().unwrap();
-        let platform_framebuffer = frame_buffer.frame_buffer.as_ref().unwrap();
+        let frame_buffer_option = locked.get_framebuffer();
+        if frame_buffer_option.is_none() { return; }
+        let frame_buffer = frame_buffer_option.unwrap();
+        let platform_framebuffer_option = frame_buffer.frame_buffer.as_ref();
+        if platform_framebuffer_option.is_none() { return; }
+        let platform_framebuffer = platform_framebuffer_option.unwrap();
         
         let info = platform_framebuffer.info();
         let y_offset = info.height - glyph.height();

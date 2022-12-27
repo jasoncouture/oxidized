@@ -290,9 +290,12 @@ dependencies = [
  "bootloader_api",
  "lazy_static",
  "linked_list_allocator",
+ "pic8259",
+ "raw-cpuid",
  "spin 0.9.4",
  "uart_16550",
  "volatile",
+ "x86",
  "x86_64",
 ]
 
@@ -408,6 +411,15 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "fa50141d081512ab30fd9e7e7692476866df5098b028536ad6680212e717fa8d"
 
 [[package]]
+name = "pic8259"
+version = "0.10.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "24ec21f514e2e16e94649f1d041ca4a7069b512c037ac156360652a775e6229d"
+dependencies = [
+ "x86_64",
+]
+
+[[package]]
 name = "proc-macro2"
 version = "1.0.49"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -430,6 +442,15 @@ name = "radium"
 version = "0.7.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "dc33ff2d4973d518d823d61aa239014831e521c75da58e3df4840d3f47749d09"
+
+[[package]]
+name = "raw-cpuid"
+version = "10.6.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "a6823ea29436221176fe662da99998ad3b4db2c7f31e7b6f5fe43adccd6320bb"
+dependencies = [
+ "bitflags",
+]
 
 [[package]]
 name = "redox_syscall"
@@ -733,6 +754,17 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "05f360fc0b24296329c78fda852a1e9ae82de9cf7b27dae4b7f62f118f77b9ed"
 dependencies = [
  "tap",
+]
+
+[[package]]
+name = "x86"
+version = "0.52.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "2781db97787217ad2a2845c396a5efe286f87467a5810836db6d74926e94a385"
+dependencies = [
+ "bit_field",
+ "bitflags",
+ "raw-cpuid",
 ]
 
 [[package]]

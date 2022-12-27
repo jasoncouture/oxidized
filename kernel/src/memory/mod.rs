@@ -7,7 +7,7 @@ use x86_64::{
     VirtAddr,
 };
 
-use crate::println;
+use crate::{println, verbose};
 
 use self::allocator::{init_frame_allocator, init_kernel_heap};
 
@@ -47,18 +47,16 @@ pub(crate) fn initialize_virtual_memory(
     unsafe {
         {
             let mut_memory_manager = &mut KERNEL_MEMORY_MANAGER.lock();
-            println!("Initializing memory manager");
             mut_memory_manager.init(OffsetPageTable::new(
                 get_active_page_table(base_address),
                 base_address,
             ));
         }
         // and boot up the frame allocator
-        println!("Setting up frame allocator");
         init_frame_allocator(memory_map);
         // And then the heap.
-        println!("Setting up heap");
         init_kernel_heap().expect("Failed to initialize kernel heap");
+        verbose!("Heap and virtual memory initialized.");
     }
 }
 

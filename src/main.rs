@@ -29,7 +29,8 @@ fn create_command(image_path: &str, uefi: bool) -> Command {
         .arg("-serial")
         .arg("stdio")
         .arg("-m")
-        .arg("size=4096");
+        .arg("size=4096")
+        .arg("-no-reboot");
 
     return cmd;
 }

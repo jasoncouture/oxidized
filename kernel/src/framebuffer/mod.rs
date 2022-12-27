@@ -191,6 +191,9 @@ impl KernelFramebuffer {
         height: usize,
         color: &Color,
     ) {
+        if self.frame_buffer.is_none() {
+            return;
+        }
         let fb_color = self.to_framebuffer_color(color);
         if fb_color.is_none() {
             return;
@@ -218,6 +221,9 @@ impl KernelFramebuffer {
     }
 
     pub(crate) fn shift_up(self: &mut Self, lines: usize) {
+        if self.frame_buffer.is_none() {
+            return;
+        }
         let fb = self.frame_buffer.as_mut().unwrap();
         let info = fb.info();
         let mut_framebuffer = fb.buffer_mut();
@@ -236,7 +242,7 @@ impl KernelFramebuffer {
             memcpy(
                 dst[dst_offset..].as_mut_ptr(),
                 src[src_offset..].as_ptr(),
-                count
+                count,
             );
         }
     }
@@ -247,7 +253,7 @@ impl KernelFramebuffer {
             memcpy(
                 dst[dst_offset..].as_mut_ptr(),
                 dst[src_offset..].as_ptr(),
-                count
+                count,
             );
         }
     }

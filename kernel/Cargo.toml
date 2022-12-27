@@ -15,20 +15,8 @@ bitvec = { version = "1.0.0", default_features = false, features = ["atomic"] }
 
 [target.'cfg(target_arch = "x86_64")'.dependencies]
 x86_64 = "0.14.10"
-# pal_x86_64 = { path = "pal_x86_64" }
 
-[package.metadata.bootimage]
-build-command = ["build"]
-run-command = ["qemu-system-x86_64", "-drive", "format=raw,file={}"]
-run-args = []
-test-args = [
-    "-device",
-    "isa-debug-exit,iobase=0xf4,iosize=0x04",
-    "-serial",
-    "stdio",
-    "-display",
-    "none",
-]
-test-success-exit-code = 3
-test-timeout = 300
-test-no-reboot = true
+[target.'cfg(any(target_arch = "x86", target_arch = "x86_64"))'.dependencies]
+raw-cpuid = "10.2.0"
+x86 = { version = "0.52", default-features = false }
+pic8259 = "0.10.1"
