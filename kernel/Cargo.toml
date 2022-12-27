@@ -9,6 +9,8 @@ volatile = "0.4.5"
 lazy_static = { version = "1.0", features = ["spin_no_std"] }
 spin = { version = "0.9.4" }
 uart_16550 = "0.2.0"
+linked_list_allocator = { version = "0.10.4", features = ["use_spin"] }
+bitvec = { version = "1.0.0", default_features = false, features = ["atomic"] }
 
 
 [target.'cfg(target_arch = "x86_64")'.dependencies]
@@ -19,7 +21,14 @@ x86_64 = "0.14.10"
 build-command = ["build"]
 run-command = ["qemu-system-x86_64", "-drive", "format=raw,file={}"]
 run-args = []
-test-args = ["-device", "isa-debug-exit,iobase=0xf4,iosize=0x04", "-serial", "stdio", "-display", "none"]
+test-args = [
+    "-device",
+    "isa-debug-exit,iobase=0xf4,iosize=0x04",
+    "-serial",
+    "stdio",
+    "-display",
+    "none",
+]
 test-success-exit-code = 3
 test-timeout = 300
 test-no-reboot = true

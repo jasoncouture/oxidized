@@ -1,8 +1,11 @@
-use core::cmp::min;
-
+use core::{cmp::min, slice::SlicePattern};
+extern crate alloc;
+use alloc::boxed::Box;
 use bootloader_api::{info::*, *};
 use lazy_static::*;
 use spin::Mutex;
+
+use crate::memory::memcpy;
 
 #[derive(Debug, Clone, Copy)]
 pub(crate) struct Point(pub usize, pub usize);
@@ -44,18 +47,18 @@ static mut FRAME_BUFFER_INTERNAL: KernelFramebuffer = KernelFramebuffer { frame_
 pub struct FrameBufferWrapper {}
 impl FrameBufferWrapper {
     pub(crate) fn get_framebuffer(self: &Self) -> Option<&mut KernelFramebuffer> {
-        unsafe {
-            Some(&mut FRAME_BUFFER_INTERNAL)
-        }
+        unsafe { Some(&mut FRAME_BUFFER_INTERNAL) }
     }
 
     pub(crate) fn set_framebuffer(self: &Self, frame_buffer: Option<&'static mut FrameBuffer>) {
-        unsafe { FRAME_BUFFER_INTERNAL.frame_buffer = frame_buffer; }
+        unsafe {
+            FRAME_BUFFER_INTERNAL.frame_buffer = frame_buffer;
+        }
     }
 }
 
 lazy_static! {
-    pub static ref FRAME_BUFFER: Mutex<FrameBufferWrapper> = Mutex::new(FrameBufferWrapper{});
+    pub static ref FRAME_BUFFER: Mutex<FrameBufferWrapper> = Mutex::new(FrameBufferWrapper {});
 }
 
 pub fn init_framebuffer(frame_buffer: Option<&'static mut FrameBuffer>) {
@@ -146,19 +149,57 @@ impl KernelFramebuffer {
         if self.frame_buffer.is_none() {
             return;
         }
-
+        let info = self.frame_buffer.as_ref().unwrap().info();
+        self.draw_rect(0, 0, info.width, info.height, color)
+    }
+    fn set_pixel_raw(self: &mut Self, x: usize, y: usize, color: &[u8]) {
+        if self.frame_buffer.is_none() {
+            return;
+        }
         let fb = self.frame_buffer.as_deref_mut().unwrap();
-        if color.r == 0 && color.g == 0 && color.b == 0 {
-            fb.buffer_mut().fill(0);
-            return;
-        }
         let fbi = fb.info();
-        if Self::is_supported(fbi.pixel_format) == false {
+
+        if x >= fbi.width || y >= fbi.height {
             return;
         }
-        for x in 0..fbi.width as usize {
-            for y in 0..fbi.height as usize {
-                self.set_pixel(x, y, color)
+
+        let fb_buffer = fb.buffer_mut();
+        let start = Self::get_buffer_start_offset(x as usize, y as usize, fbi);
+
+        let count = min(fbi.bytes_per_pixel, color.len());
+        Self::copy_range(fb_buffer, color, 0, start, count);
+    }
+    #[inline]
+    fn to_framebuffer_color(self: &mut Self, color: &Color) -> Option<Box<[u8]>> {
+        if self.frame_buffer.is_none() {
+            return None;
+        }
+        let fb = self.frame_buffer.as_deref_mut().unwrap();
+        let fbi = fb.info();
+        if !Self::is_supported(fbi.pixel_format) {
+            return None;
+        }
+        let mut raw_color = [0 as u8; 3];
+        color.to_framebuffer_color(fbi.pixel_format, &mut raw_color);
+        return Some(Box::new(raw_color));
+    }
+    pub fn draw_rect(
+        self: &mut Self,
+        x: usize,
+        y: usize,
+        width: usize,
+        height: usize,
+        color: &Color,
+    ) {
+        let fb_color = self.to_framebuffer_color(color);
+        if fb_color.is_none() {
+            return;
+        }
+
+        let raw_color = fb_color.unwrap();
+        for y_offset in 0..height {
+            for x_offset in 0..width {
+                self.set_pixel_raw(x + x_offset, y + y_offset, &raw_color);
             }
         }
     }
@@ -172,45 +213,42 @@ impl KernelFramebuffer {
             return;
         }
         let mut buf = [0 as u8; 3];
-
         color.to_framebuffer_color(fbi.pixel_format, &mut buf);
-        let fb_buffer = fb.buffer_mut();
-        let start = Self::get_buffer_start_offset(x as usize, y as usize, fbi);
-        let loop_count = min(fbi.bytes_per_pixel, buf.len());
-        for i in 0..loop_count {
-            let offset = start + i;
-            fb_buffer[offset] = buf[i];
-        }
+        self.set_pixel_raw(x, y, &buf);
     }
 
     pub(crate) fn shift_up(self: &mut Self, lines: usize) {
-
         let fb = self.frame_buffer.as_mut().unwrap();
         let info = fb.info();
-        let line_size = info.stride * info.bytes_per_pixel;
-        let block_size = line_size * lines;
         let mut_framebuffer = fb.buffer_mut();
-        let mut y_pos: usize = 0;
-        loop {
-            let src_offset = (y_pos + lines) * line_size;
-            let dst_offset = y_pos * line_size;
-            if y_pos >= (info.height - lines) {
-                break;
-            }
-            Self::copy_range(mut_framebuffer, src_offset, dst_offset, block_size);
-            y_pos += lines;
-        }
+        let start_y = lines;
+        let start_offset = Self::get_buffer_start_offset(0, start_y, info);
+        let end_offset = Self::get_buffer_start_offset(info.width - 1, info.height - 1, info);
+        let copy_length = end_offset - start_offset;
+        Self::copy_range_self(mut_framebuffer, start_offset, 0, copy_length);
         let clear_color = &Color::black();
-        for y in (info.height - lines)..(info.height) {
-            for x in 0..info.width {
-                self.set_pixel(x, y, clear_color);
-            }
+        self.draw_rect(0, info.height - lines, info.width, lines, clear_color);
+    }
+
+    #[inline]
+    fn copy_range(dst: &mut [u8], src: &[u8], src_offset: usize, dst_offset: usize, count: usize) {
+        unsafe {
+            memcpy(
+                dst[dst_offset..].as_mut_ptr(),
+                src[src_offset..].as_ptr(),
+                count
+            );
         }
     }
 
-    fn copy_range(dst: &mut [u8], src_offset: usize, dst_offset: usize, count: usize) {
-        for i in 0..count {
-            dst[i+dst_offset] = dst[i+src_offset];
+    #[inline]
+    fn copy_range_self(dst: &mut [u8], src_offset: usize, dst_offset: usize, count: usize) {
+        unsafe {
+            memcpy(
+                dst[dst_offset..].as_mut_ptr(),
+                dst[src_offset..].as_ptr(),
+                count
+            );
         }
     }
 }

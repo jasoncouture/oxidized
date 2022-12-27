@@ -1,13 +1,14 @@
 use core::fmt;
 
 use crate::framebuffer::*;
+use alloc::string::ToString;
 use lazy_static::*;
 use spin::Mutex;
 
 #[derive(Clone, Copy, Debug)]
 #[repr(C)]
 pub(crate) struct Glyph {
-    header: FontHeader,
+    height: usize,
     bytes: [u8; 32],
 }
 
@@ -22,7 +23,10 @@ lazy_static! {
 }
 
 pub(crate) fn _print(args: fmt::Arguments) {
-    for c in args.as_str().unwrap().chars() {
+    for c in args.to_string().chars() {
+        if !c.is_ascii() {
+            continue;
+        }
         match c {
             '\n' => CONSOLE.lock().new_line(),
             _ => CONSOLE.lock().put_char(c)
@@ -31,14 +35,14 @@ pub(crate) fn _print(args: fmt::Arguments) {
 }
 
 #[macro_export]
-macro_rules! print {
+macro_rules! console_print {
     ($($arg:tt)*) => ($crate::console::_print(format_args!($($arg)*)));
 }
 
 #[macro_export]
-macro_rules! println {
-    () => ($crate::print!("\n"));
-    ($($arg:tt)*) => ($crate::print!("{}\n", format_args!($($arg)*)));
+macro_rules! console_println {
+    () => ($crate::console_print!("\n"));
+    ($($arg:tt)*) => ($crate::console_print!("{}\n", format_args!($($arg)*)));
 }
 
 
@@ -46,10 +50,10 @@ impl Console {
     pub fn new_line(self: &Self) {
         let locked = FRAME_BUFFER.lock();
         let frame_buffer = locked.get_framebuffer().unwrap();
-        self.new_line_internal(frame_buffer);
-    }
-    fn new_line_internal(self: &Self, frame_buffer: &mut KernelFramebuffer) {
         let glyph = self.font.glyph(b' ');
+        self.new_line_internal(frame_buffer, &glyph);
+    }
+    fn new_line_internal(self: &Self, frame_buffer: &mut KernelFramebuffer, glyph: &Glyph) {
         frame_buffer.shift_up(glyph.height());
         unsafe { CONSOLE_X_POSITION = 0 };
     }
@@ -61,10 +65,10 @@ impl Console {
         let platform_framebuffer = frame_buffer.frame_buffer.as_ref().unwrap();
         
         let info = platform_framebuffer.info();
-        let y_offset = info.height - glyph.header.charsize as usize;
+        let y_offset = info.height - glyph.height();
 
         if x_offset >= (info.width - glyph.width()) {
-            self.new_line_internal(frame_buffer);
+            self.new_line_internal(frame_buffer, &glyph);
             x_offset = 0;
         }
         {
@@ -82,12 +86,13 @@ impl Console {
 }
 
 impl Glyph {
+    #[inline]
     fn width(self: &Self) -> usize {
         8
     }
-
+    #[inline]
     fn height(self: &Self) -> usize {
-        self.header.charsize as usize
+        self.height
     }
 
     fn pixel(self: &Self, mut x: usize, mut y: usize) -> bool {
@@ -112,7 +117,6 @@ struct FontHeader {
 impl FontHeader {
     fn create(font_bytes: &[u8]) -> FontHeader {
         assert!(font_bytes.len() >= 4);
-        let font_bytes = include_bytes!("console_font.psf");
         let magic: [u8; 2] = [font_bytes[0], font_bytes[1]];
         let mode = font_bytes[2];
         let char_size = font_bytes[3];
@@ -126,7 +130,6 @@ impl FontHeader {
 }
 
 pub(crate) struct Font {
-    header: FontHeader,
     glyphs: [Glyph; 256],
 }
 
@@ -137,7 +140,7 @@ impl Font {
         assert!(bytes[1] == 0x04);
         let header = FontHeader::create(bytes);
         let mut glyphs = [Glyph {
-            header: header,
+            height: header.charsize as usize,
             bytes: [0 as u8; 32],
         }; 256];
         for i in 0..256 as usize {
@@ -147,12 +150,11 @@ impl Font {
                 glyph_bytes[x] = bytes[base_index + x as usize];
             }
             glyphs[i] = Glyph {
-                header,
+                height: header.charsize as usize,
                 bytes: glyph_bytes,
             };
         }
         Font {
-            header: header,
             glyphs: glyphs,
         }
     }

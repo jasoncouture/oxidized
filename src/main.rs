@@ -26,7 +26,10 @@ fn create_command(image_path: &str, uefi: bool) -> Command {
     }
 
     cmd.arg("-drive").arg(format!("format=raw,file={image_path}"))
-        .arg("-serial").arg("stdio");
+        .arg("-serial")
+        .arg("stdio")
+        .arg("-m")
+        .arg("size=4096");
 
     return cmd;
 }
