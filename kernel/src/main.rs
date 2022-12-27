@@ -16,7 +16,7 @@ pub(crate) mod serial;
 mod test_runner;
 mod unit_tests;
 
-use bootloader_api::{config::Mapping, info::MemoryRegions};
+use bootloader_api::config::Mapping;
 use framebuffer::*;
 use memory::{allocator::KERNEL_FRAME_ALLOCATOR, *};
 use x86_64::VirtAddr;

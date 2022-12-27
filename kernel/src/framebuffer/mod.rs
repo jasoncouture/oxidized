@@ -1,7 +1,7 @@
-use core::{cmp::min, slice::SlicePattern};
+use core::cmp::min;
 extern crate alloc;
 use alloc::boxed::Box;
-use bootloader_api::{info::*, *};
+use bootloader_api::info::*;
 use lazy_static::*;
 use spin::Mutex;
 

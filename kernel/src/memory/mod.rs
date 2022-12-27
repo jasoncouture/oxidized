@@ -1,19 +1,15 @@
-use bootloader_api::info::{MemoryRegionKind, MemoryRegions};
+use bootloader_api::info::MemoryRegions;
 use lazy_static::lazy_static;
 use spin::Mutex;
 use x86_64::{
     registers::control::Cr3,
-    structures::paging::{
-        page_table::FrameError, FrameAllocator, OffsetPageTable, PageTable, PhysFrame, Size4KiB,
-    },
-    PhysAddr, VirtAddr,
+    structures::paging::{OffsetPageTable, PageTable},
+    VirtAddr,
 };
 
 use crate::println;
 
-use self::allocator::{
-    init_frame_allocator, init_kernel_heap, BootInfoFrameAllocator, KERNEL_FRAME_ALLOCATOR,
-};
+use self::allocator::{init_frame_allocator, init_kernel_heap};
 
 pub(crate) mod allocator;
 
@@ -66,7 +62,6 @@ pub(crate) fn initialize_virtual_memory(
     }
 }
 
-
 /// Memcpy
 ///
 /// Copy N bytes of memory from one location to another.
@@ -74,17 +69,14 @@ pub(crate) fn initialize_virtual_memory(
 /// This faster implementation works by copying bytes not one-by-one, but in
 /// groups of 8 bytes (or 4 bytes in the case of 32-bit architectures).
 #[no_mangle]
-pub unsafe extern fn memcpy(dest: *mut u8, src: *const u8,
-                            n: usize) -> *mut u8 {
-
-    let n_usize: usize = n/WORD_SIZE; // Number of word sized groups
+pub unsafe extern "C" fn memcpy(dest: *mut u8, src: *const u8, n: usize) -> *mut u8 {
+    let n_usize: usize = n / WORD_SIZE; // Number of word sized groups
     let mut i: usize = 0;
 
     // Copy `WORD_SIZE` bytes at a time
-    let n_fast = n_usize*WORD_SIZE;
+    let n_fast = n_usize * WORD_SIZE;
     while i < n_fast {
-        *((dest as usize + i) as *mut usize) =
-            *((src as usize + i) as *const usize);
+        *((dest as usize + i) as *mut usize) = *((src as usize + i) as *const usize);
         i += WORD_SIZE;
     }
 
