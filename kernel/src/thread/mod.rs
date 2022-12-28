@@ -2,6 +2,7 @@ use alloc::{boxed::Box, vec::Vec};
 use x86_64::structures::{tss::TaskStateSegment, paging::PageTable};
 
 pub mod scheduler;
+pub(crate) mod context;
 
 pub struct Context {
     // TODO

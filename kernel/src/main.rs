@@ -6,6 +6,7 @@
 #![feature(alloc_error_handler)]
 #![feature(abi_x86_interrupt)]
 #![feature(asm_const)]
+#![feature(box_syntax)]
 //#[cfg_attr(target_arch = "x86_64")]
 #![test_runner(crate::test_runner::test_runner)]
 #![reexport_test_harness_main = "test_main"]
@@ -16,6 +17,7 @@ pub(crate) mod framebuffer;
 pub(crate) mod interrupts;
 pub(crate) mod logging;
 
+mod acpi;
 mod loader;
 mod memory;
 mod panic;
@@ -23,17 +25,18 @@ pub(crate) mod serial;
 mod test_runner;
 pub mod thread;
 mod unit_tests;
-mod acpi;
 
 use bootloader_api::{
     config::{self, Mapping},
     info::MemoryRegionKind,
 };
+use core::arch::asm;
 use framebuffer::*;
 use memory::{allocator::KERNEL_FRAME_ALLOCATOR, *};
-use x86_64::VirtAddr;
 use x86_64::software_interrupt;
-use core::arch::asm;
+use x86_64::VirtAddr;
+
+use crate::thread::context::CONTEXTS;
 const CONFIG: bootloader_api::BootloaderConfig = {
     let mut config = bootloader_api::BootloaderConfig::new_default();
     config.kernel_stack_size = 1024 * 1024; // 1MiB
@@ -103,6 +106,24 @@ fn kernel_main() {
                 range.end,
                 range.kind
             );
+        }
+    }
+    unsafe {
+        let contexts = CONTEXTS.as_mut_ptr();
+        let idle_context = (*contexts).create_context();
+        (*idle_context).activate(0);
+        let another_context = (*contexts).create_context();
+        (*another_context).activate(0);
+    }
+
+    loop {
+        let next = CONTEXTS.write().select(0);
+        if let Some(n) = next {
+            unsafe {
+                debug!("Would select context {}, stored at {:p}", (*n).id(), n);
+            }
+        } else {
+            debug!("No context selected!");
         }
     }
 }
