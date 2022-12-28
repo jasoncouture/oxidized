@@ -1,0 +1,10 @@
+[package]
+name = "kernel_shared"
+version = "0.1.0"
+edition = "2021"
+
+[features]
+kernel = []
+server = ["client"]
+client = []
+default = ["client"]

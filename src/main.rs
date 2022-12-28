@@ -30,7 +30,9 @@ fn create_command(image_path: &str, uefi: bool) -> Command {
         .arg("stdio")
         .arg("-m")
         .arg("size=4096")
-        .arg("-no-reboot");
+        .arg("-no-reboot")
+        .arg("-smp")
+        .arg("cpus=4");
 
     return cmd;
 }

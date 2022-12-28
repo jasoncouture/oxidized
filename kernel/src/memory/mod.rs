@@ -4,7 +4,7 @@ use spin::Mutex;
 use x86_64::{
     registers::control::Cr3,
     structures::paging::{OffsetPageTable, PageTable},
-    VirtAddr,
+    PhysAddr, VirtAddr,
 };
 
 use crate::{println, verbose};
@@ -15,20 +15,25 @@ pub(crate) mod allocator;
 
 pub(crate) struct MemoryManager {
     page_table: Option<OffsetPageTable<'static>>,
+    physical_offset: VirtAddr,
 }
-use core::mem;
-
-pub const WORD_SIZE: usize = mem::size_of::<usize>();
 
 impl MemoryManager {
     pub fn init(self: &mut Self, page_table: OffsetPageTable<'static>) {
         self.page_table = Some(page_table);
+        self.physical_offset = self.page_table.as_ref().unwrap().phys_offset();
+    }
+
+    pub fn translate(&self, physical_address: PhysAddr) -> VirtAddr {
+        VirtAddr::new(physical_address.as_u64() + self.physical_offset.as_u64())
     }
 }
 
 lazy_static! {
-    static ref KERNEL_MEMORY_MANAGER: Mutex<MemoryManager> =
-        Mutex::new(MemoryManager { page_table: None });
+    pub(crate) static ref KERNEL_MEMORY_MANAGER: Mutex<MemoryManager> = Mutex::new(MemoryManager {
+        page_table: None,
+        physical_offset: VirtAddr::zero()
+    });
 }
 
 unsafe fn get_active_page_table(base_address: VirtAddr) -> &'static mut PageTable {
@@ -58,31 +63,4 @@ pub(crate) fn initialize_virtual_memory(
         init_kernel_heap().expect("Failed to initialize kernel heap");
         verbose!("Heap and virtual memory initialized.");
     }
-}
-
-/// Memcpy
-///
-/// Copy N bytes of memory from one location to another.
-///
-/// This faster implementation works by copying bytes not one-by-one, but in
-/// groups of 8 bytes (or 4 bytes in the case of 32-bit architectures).
-#[no_mangle]
-pub unsafe extern "C" fn memcpy(dest: *mut u8, src: *const u8, n: usize) -> *mut u8 {
-    let n_usize: usize = n / WORD_SIZE; // Number of word sized groups
-    let mut i: usize = 0;
-
-    // Copy `WORD_SIZE` bytes at a time
-    let n_fast = n_usize * WORD_SIZE;
-    while i < n_fast {
-        *((dest as usize + i) as *mut usize) = *((src as usize + i) as *const usize);
-        i += WORD_SIZE;
-    }
-
-    // Copy 1 byte at a time
-    while i < n {
-        *((dest as usize + i) as *mut u8) = *((src as usize + i) as *const u8);
-        i += 1;
-    }
-
-    dest
 }

@@ -5,8 +5,8 @@
 #![feature(slice_pattern)]
 #![feature(alloc_error_handler)]
 #![feature(abi_x86_interrupt)]
+#![feature(asm_const)]
 //#[cfg_attr(target_arch = "x86_64")]
-
 #![test_runner(crate::test_runner::test_runner)]
 #![reexport_test_harness_main = "test_main"]
 include!(concat!(env!("OUT_DIR"), "/metadata_constants.rs"));
@@ -16,20 +16,24 @@ pub(crate) mod framebuffer;
 pub(crate) mod interrupts;
 pub(crate) mod logging;
 
+mod loader;
 mod memory;
 mod panic;
 pub(crate) mod serial;
 mod test_runner;
+pub mod thread;
 mod unit_tests;
-mod loader;
+mod acpi;
 
-use bootloader_api::{config::{Mapping, self}, info::MemoryRegionKind};
+use bootloader_api::{
+    config::{self, Mapping},
+    info::MemoryRegionKind,
+};
 use framebuffer::*;
 use memory::{allocator::KERNEL_FRAME_ALLOCATOR, *};
 use x86_64::VirtAddr;
-
-use crate::interrupts::arch_x86_64::breakpoint_hardware;
-
+use x86_64::software_interrupt;
+use core::arch::asm;
 const CONFIG: bootloader_api::BootloaderConfig = {
     let mut config = bootloader_api::BootloaderConfig::new_default();
     config.kernel_stack_size = 1024 * 1024; // 1MiB
@@ -69,7 +73,9 @@ fn early_init(boot_info: &'static mut bootloader_api::BootInfo) {
         boot_info.framebuffer.as_mut();
     init_framebuffer(fb_option);
     clear();
-    debug!("Initializing interrupts");
+    debug!("Reading ACPI");
+    crate::acpi::init(boot_info.rsdp_addr.into_option());
+    debug!("Initializing interrupts on CPU 0");
     interrupts::init();
 }
 
@@ -80,10 +86,23 @@ fn clear() {
 }
 
 fn kernel_main() {
+    unsafe {
+        software_interrupt!(0x80);
+        software_interrupt!(0x81);
+    }
     verbose!("Bootloader provided memory map, with unusable page ranges:");
     unsafe {
-        for range in KERNEL_FRAME_ALLOCATOR.get_memory_regions().iter().filter(|range| range.kind != MemoryRegionKind::Usable) {
-            verbose!("-- {:#016x} to {:#016x} - {:?}", range.start, range.end, range.kind);
+        for range in KERNEL_FRAME_ALLOCATOR
+            .get_memory_regions()
+            .iter()
+            .filter(|range| range.kind != MemoryRegionKind::Usable)
+        {
+            verbose!(
+                "-- {:#016x} to {:#016x} - {:?}",
+                range.start,
+                range.end,
+                range.kind
+            );
         }
     }
 }
@@ -92,5 +111,3 @@ fn test_hook() {
     #[cfg(test)]
     test_main();
 }
-
-

@@ -47,21 +47,21 @@ macro_rules! verbose {
 #[macro_export]
 macro_rules! info {
     ($($arg:tt)*) => {
-        $crate::logging::_print::_print($crate::logging::LogLevel::INFO, format_args!($($arg)*));
+        $crate::logging::_print($crate::logging::LogLevel::INFO, format_args!($($arg)*));
     };
 }
 
 #[macro_export]
 macro_rules! warn {
     ($($arg:tt)*) => {
-        $crate::logging::_print::_print($crate::logging::LogLevel::WARNING, format_args!($($arg)*));
+        $crate::logging::_print($crate::logging::LogLevel::WARNING, format_args!($($arg)*));
     };
 }
 
 #[macro_export]
 macro_rules! error {
     ($($arg:tt)*) => {
-        $crate::logging::_print::_print($crate::logging::LogLevel::ERROR, format_args!($($arg)*));
+        $crate::logging::_print($crate::logging::LogLevel::ERROR, format_args!($($arg)*));
     };
 }
 

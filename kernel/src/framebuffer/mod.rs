@@ -4,8 +4,7 @@ use alloc::boxed::Box;
 use bootloader_api::info::*;
 use lazy_static::*;
 use spin::Mutex;
-
-use crate::memory::memcpy;
+use kernel_shared::memory::*;
 
 #[derive(Debug, Clone, Copy)]
 pub(crate) struct Point(pub usize, pub usize);

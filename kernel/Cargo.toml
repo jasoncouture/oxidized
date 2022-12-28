@@ -11,6 +11,7 @@ spin = { version = "0.9.4" }
 uart_16550 = "0.2.0"
 linked_list_allocator = { version = "0.10.4", features = ["use_spin"] }
 bitvec = { version = "1.0.0", default_features = false, features = ["atomic"] }
+kernel_shared = {path = "../kernel_shared", default_features = false, features = ["kernel"]}
 
 
 [target.'cfg(target_arch = "x86_64")'.dependencies]
@@ -20,3 +21,4 @@ x86_64 = "0.14.10"
 raw-cpuid = "10.2.0"
 x86 = { version = "0.52", default-features = false }
 pic8259 = "0.10.1"
+acpi = "4.1.1"
