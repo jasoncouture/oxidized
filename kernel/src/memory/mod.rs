@@ -1,15 +1,12 @@
+use alloc::string::String;
 use bootloader_api::info::MemoryRegions;
 use lazy_static::lazy_static;
 use spin::Mutex;
-use x86_64::{
-    registers::control::Cr3,
-    structures::paging::{OffsetPageTable, PageTable},
-    PhysAddr, VirtAddr,
-};
+use x86_64::{registers::control::Cr3, structures::paging::*, PhysAddr, VirtAddr};
 
 use crate::{println, verbose};
 
-use self::allocator::{init_frame_allocator, init_kernel_heap};
+use self::allocator::{init_frame_allocator, init_kernel_heap, KERNEL_FRAME_ALLOCATOR, PAGE_SIZE};
 
 pub(crate) mod allocator;
 
@@ -22,6 +19,22 @@ impl MemoryManager {
     pub fn init(self: &mut Self, page_table: OffsetPageTable<'static>) {
         self.page_table = Some(page_table);
         self.physical_offset = self.page_table.as_ref().unwrap().phys_offset();
+    }
+
+    pub fn identity_map_writable_data_for_kernel(&mut self, physical_address: PhysAddr) {
+        let frame = PhysFrame::<Size4KiB>::containing_address(physical_address);
+        unsafe {
+            self.page_table
+                .as_mut()
+                .unwrap()
+                .identity_map(
+                    frame,
+                    PageTableFlags::PRESENT | PageTableFlags::WRITABLE | PageTableFlags::NO_EXECUTE,
+                    &mut KERNEL_FRAME_ALLOCATOR,
+                )
+                .expect("Unable to identity map memory!")
+                .flush();
+        }
     }
 
     pub fn translate(&self, physical_address: PhysAddr) -> VirtAddr {

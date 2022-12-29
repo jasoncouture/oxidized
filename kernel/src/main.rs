@@ -7,17 +7,17 @@
 #![feature(abi_x86_interrupt)]
 #![feature(asm_const)]
 #![feature(box_syntax)]
+#![feature(once_cell)]
 //#[cfg_attr(target_arch = "x86_64")]
 #![test_runner(crate::test_runner::test_runner)]
 #![reexport_test_harness_main = "test_main"]
 include!(concat!(env!("OUT_DIR"), "/metadata_constants.rs"));
 extern crate alloc;
+pub(crate) mod arch;
 pub(crate) mod console;
 pub(crate) mod framebuffer;
-pub(crate) mod interrupts;
 pub(crate) mod logging;
 
-mod acpi;
 mod loader;
 mod memory;
 mod panic;
@@ -26,17 +26,16 @@ mod test_runner;
 pub mod thread;
 mod unit_tests;
 
-use bootloader_api::{
-    config::{self, Mapping},
-    info::MemoryRegionKind,
-};
-use core::arch::asm;
+use bootloader_api::{config::Mapping, info::MemoryRegionKind, BootInfo};
+use core::ptr::NonNull;
 use framebuffer::*;
 use memory::{allocator::KERNEL_FRAME_ALLOCATOR, *};
-use x86_64::software_interrupt;
 use x86_64::VirtAddr;
 
-use crate::thread::context::CONTEXTS;
+use crate::{
+    arch::{arch_x86_64::{get_cpu_brand_string, get_cpu_vendor_string}, wait_for_interrupt, enable_interrupts, get_timer_ticks},
+    thread::context::CONTEXTS,
+};
 const CONFIG: bootloader_api::BootloaderConfig = {
     let mut config = bootloader_api::BootloaderConfig::new_default();
     config.kernel_stack_size = 1024 * 1024; // 1MiB
@@ -47,21 +46,22 @@ const CONFIG: bootloader_api::BootloaderConfig = {
 };
 
 bootloader_api::entry_point!(kernel_boot, config = &CONFIG);
+static mut BOOT_INFO: Option<NonNull<BootInfo>> = None;
 
 #[allow(unreachable_code)]
 fn kernel_boot(boot_info: &'static mut bootloader_api::BootInfo) -> ! {
-    early_init(boot_info);
+    unsafe {
+        BOOT_INFO = NonNull::new(boot_info);
+        early_init(BOOT_INFO.unwrap().as_mut());
+        hardware_init(BOOT_INFO.unwrap().as_mut());
+    }
     test_hook();
-    verbose!(
-        "Oxidized kernel v{}, starting",
-        METADATA_VERSION.unwrap_or("Unknown")
-    );
     kernel_main();
     panic!("Kernel exited, this should not happen!");
 }
 
 #[inline]
-fn early_init(boot_info: &'static mut bootloader_api::BootInfo) {
+fn early_init(boot_info: &'static mut BootInfo) {
     initialize_virtual_memory(
         VirtAddr::new(
             boot_info
@@ -76,10 +76,11 @@ fn early_init(boot_info: &'static mut bootloader_api::BootInfo) {
         boot_info.framebuffer.as_mut();
     init_framebuffer(fb_option);
     clear();
-    debug!("Reading ACPI");
-    crate::acpi::init(boot_info.rsdp_addr.into_option());
-    debug!("Initializing interrupts on CPU 0");
-    interrupts::init();
+}
+
+fn hardware_init(boot_info: &BootInfo) {
+    debug!("Initializing hardware on boot CPU");
+    arch::init(boot_info);
 }
 
 fn clear() {
@@ -89,10 +90,12 @@ fn clear() {
 }
 
 fn kernel_main() {
-    unsafe {
-        software_interrupt!(0x80);
-        software_interrupt!(0x81);
-    }
+    verbose!(
+        "Oxidized kernel v{}, starting",
+        METADATA_VERSION.unwrap_or("Unknown")
+    );
+    verbose!("CPU Vendor: {}", get_cpu_vendor_string());
+    verbose!("CPU Brand : {}", get_cpu_brand_string());
     verbose!("Bootloader provided memory map, with unusable page ranges:");
     unsafe {
         for range in KERNEL_FRAME_ALLOCATOR
@@ -115,16 +118,11 @@ fn kernel_main() {
         let another_context = (*contexts).create_context();
         (*another_context).activate(0);
     }
-
+    enable_interrupts();
     loop {
-        let next = CONTEXTS.write().select(0);
-        if let Some(n) = next {
-            unsafe {
-                debug!("Would select context {}, stored at {:p}", (*n).id(), n);
-            }
-        } else {
-            debug!("No context selected!");
-        }
+        let ticks = get_timer_ticks();
+        debug!("Tick: {}", ticks);
+        wait_for_interrupt();
     }
 }
 
