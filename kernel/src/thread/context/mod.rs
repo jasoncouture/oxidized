@@ -21,7 +21,7 @@ pub struct Context {
     state: ContextState,
     block_mutex: Option<Mutex<()>>,
     lock: RwLock<()>,
-    cpu: usize,
+    cpu: usize
 }
 
 impl Context {
@@ -31,7 +31,7 @@ impl Context {
             state: ContextState::Initializing,
             block_mutex: None,
             lock: RwLock::new(()),
-            cpu: usize::MAX,
+            cpu: usize::MAX
         }
     }
 

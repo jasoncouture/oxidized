@@ -14,11 +14,19 @@ pub fn init() {
 }
 
 pub const DOUBLE_FAULT_IST_INDEX: u16 = 0;
+pub const CONTEXT_SWITCH_IST_INDEX: u16 = 1;
 
 lazy_static! {
     pub(crate) static ref TSS: TaskStateSegment = {
         let mut tss = TaskStateSegment::new();
         tss.interrupt_stack_table[DOUBLE_FAULT_IST_INDEX as usize] = {
+            static mut STACK: [u8; INTERRUPT_STACK_SIZE] = [0; INTERRUPT_STACK_SIZE];
+
+            let stack_start = VirtAddr::from_ptr(unsafe { &STACK });
+            let stack_end = stack_start + INTERRUPT_STACK_SIZE;
+            stack_end
+        };
+        tss.interrupt_stack_table[CONTEXT_SWITCH_IST_INDEX as usize] = {
             static mut STACK: [u8; INTERRUPT_STACK_SIZE] = [0; INTERRUPT_STACK_SIZE];
 
             let stack_start = VirtAddr::from_ptr(unsafe { &STACK });

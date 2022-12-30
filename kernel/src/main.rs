@@ -8,6 +8,7 @@
 #![feature(asm_const)]
 #![feature(box_syntax)]
 #![feature(once_cell)]
+#![feature(naked_functions)]
 //#[cfg_attr(target_arch = "x86_64")]
 #![test_runner(crate::test_runner::test_runner)]
 #![reexport_test_harness_main = "test_main"]
@@ -27,13 +28,18 @@ pub mod thread;
 mod unit_tests;
 
 use bootloader_api::{config::Mapping, info::MemoryRegionKind, BootInfo};
+use core::arch::asm;
 use core::ptr::NonNull;
 use framebuffer::*;
 use memory::{allocator::KERNEL_FRAME_ALLOCATOR, *};
-use x86_64::VirtAddr;
+use x86_64::{software_interrupt, VirtAddr};
+
 
 use crate::{
-    arch::{arch_x86_64::{get_cpu_brand_string, get_cpu_vendor_string}, wait_for_interrupt, enable_interrupts, get_timer_ticks},
+    arch::{
+        arch_x86_64::{get_cpu_brand_string, get_cpu_vendor_string},
+        enable_interrupts, get_timer_ticks, wait_for_interrupt,
+    },
     thread::context::CONTEXTS,
 };
 const CONFIG: bootloader_api::BootloaderConfig = {
@@ -44,6 +50,8 @@ const CONFIG: bootloader_api::BootloaderConfig = {
     //config.mappings.framebuffer = Mapping::Dynamic;
     config
 };
+
+static BOOT_RAMDISK_NAME: &str = "oxidized.rd";
 
 bootloader_api::entry_point!(kernel_boot, config = &CONFIG);
 static mut BOOT_INFO: Option<NonNull<BootInfo>> = None;
@@ -119,9 +127,14 @@ fn kernel_main() {
         (*another_context).activate(0);
     }
     enable_interrupts();
+    debug!("Requesting context switch");
+    unsafe {
+        software_interrupt!(254);
+    }
+    debug!("Execution resumed after context switch!");
     loop {
-        let ticks = get_timer_ticks();
-        debug!("Tick: {}", ticks);
+        // let ticks = get_timer_ticks();
+        // debug!("Tick: {}", ticks);
         wait_for_interrupt();
     }
 }

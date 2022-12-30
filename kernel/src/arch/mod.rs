@@ -3,6 +3,8 @@ pub(crate) mod arch_x86_64;
 use alloc::string::String;
 #[cfg(target_arch = "x86_64")]
 use arch_x86_64::*;
+#[cfg(target_arch = "x86_64")]
+pub use arch_x86_64::idt::contextswitch::PlatformContextState as ContextState;
 use bootloader_api::BootInfo;
 
 use self::arch_x86_64::idt::get_timer_ticks_hardware;

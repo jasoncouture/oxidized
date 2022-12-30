@@ -1,6 +1,8 @@
+pub mod contextswitch;
+
 use core::{
     panic,
-    ptr::{read_volatile, write_volatile},
+    ptr::{read_volatile, write_volatile}, arch::asm,
 };
 
 use lazy_static::*;
@@ -9,11 +11,17 @@ use volatile::Volatile;
 use x86_64::{
     set_general_handler,
     structures::idt::{InterruptDescriptorTable, InterruptStackFrame, PageFaultErrorCode},
+    VirtAddr,
 };
 
-use crate::{arch::arch_x86_64::gdt::DOUBLE_FAULT_IST_INDEX, debug, println, warn};
+use crate::{
+    arch::arch_x86_64::{gdt::{DOUBLE_FAULT_IST_INDEX, CONTEXT_SWITCH_IST_INDEX}, idt::contextswitch::_context_switch},
+    debug, println, warn,
+};
 
-use super::apic::LOCAL_APIC;
+use super::{apic::LOCAL_APIC, gdt::INTERRUPT_STACK_SIZE};
+
+static boot_cpu_gs_base: [u8; INTERRUPT_STACK_SIZE] = [0; INTERRUPT_STACK_SIZE];
 
 lazy_static! {
     static ref IDT: InterruptDescriptorTable = {
@@ -22,14 +30,19 @@ lazy_static! {
         idt.breakpoint.set_handler_fn(InterruptHandlers::breakpoint_handler);
         idt.page_fault.set_handler_fn(InterruptHandlers::page_fault_handler);
         unsafe {
-        idt.double_fault.set_handler_fn(InterruptHandlers::double_fault_handler).set_stack_index(DOUBLE_FAULT_IST_INDEX);
+            idt.double_fault.set_handler_fn(InterruptHandlers::double_fault_handler).set_stack_index(DOUBLE_FAULT_IST_INDEX);
         }
+
         // Allocate all general handlers to our generic handler.
-        set_general_handler!(&mut idt, general_interrupt_handler);
+        unsafe {
+            idt[0xFE].set_handler_addr(VirtAddr::new(_context_switch as u64)).set_stack_index(CONTEXT_SWITCH_IST_INDEX);
+        }
+        set_general_handler!(&mut idt, general_interrupt_handler, 0x20);
+        set_general_handler!(&mut idt, general_interrupt_handler, 0xFF);
         set_general_handler!(&mut idt, general_interrupt_handler, 0x80);
+        set_interrupt_handler(0x20, Some(apic_timer_interrupt_handler));
         set_interrupt_handler(0x80, Some(legacy_syscall_interrupt_handler));
-        set_interrupt_handler(32, Some(apic_timer_interrupt_handler));
-        set_interrupt_handler(255, Some(apic_spurious_interrupt_handler));
+        set_interrupt_handler(0xFF, Some(apic_spurious_interrupt_handler));        
         idt
     };
 }
@@ -59,9 +72,7 @@ fn apic_spurious_interrupt_handler(
 static mut TICKS: usize = 0;
 
 pub fn get_timer_ticks_hardware() -> usize {
-    unsafe {
-        read_volatile(&TICKS)
-    }
+    unsafe { read_volatile(&TICKS) }
 }
 
 type SoftwareInterruptHandler = fn(InterruptStackFrame, u8, Option<u64>);
