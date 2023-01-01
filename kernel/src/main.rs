@@ -9,6 +9,8 @@
 #![feature(box_syntax)]
 #![feature(once_cell)]
 #![feature(naked_functions)]
+#![feature(pointer_byte_offsets)]
+#![feature(core_intrinsics)]
 //#[cfg_attr(target_arch = "x86_64")]
 #![test_runner(crate::test_runner::test_runner)]
 #![reexport_test_harness_main = "test_main"]
@@ -38,7 +40,7 @@ use x86_64::{software_interrupt, VirtAddr};
 use crate::{
     arch::{
         arch_x86_64::{get_cpu_brand_string, get_cpu_vendor_string},
-        enable_interrupts, get_timer_ticks, wait_for_interrupt,
+        enable_interrupts, get_timer_ticks, wait_for_interrupt, get_current_cpu,
     },
     thread::context::CONTEXTS,
 };
@@ -51,8 +53,6 @@ const CONFIG: bootloader_api::BootloaderConfig = {
     config
 };
 
-static BOOT_RAMDISK_NAME: &str = "oxidized.rd";
-
 bootloader_api::entry_point!(kernel_boot, config = &CONFIG);
 static mut BOOT_INFO: Option<NonNull<BootInfo>> = None;
 
@@ -60,8 +60,8 @@ static mut BOOT_INFO: Option<NonNull<BootInfo>> = None;
 fn kernel_boot(boot_info: &'static mut bootloader_api::BootInfo) -> ! {
     unsafe {
         BOOT_INFO = NonNull::new(boot_info);
-        early_init(BOOT_INFO.unwrap().as_mut());
-        hardware_init(BOOT_INFO.unwrap().as_mut());
+        let ipi_frame = early_init(BOOT_INFO.unwrap().as_mut());
+        hardware_init(BOOT_INFO.unwrap().as_mut(), ipi_frame);
     }
     test_hook();
     kernel_main();
@@ -69,8 +69,8 @@ fn kernel_boot(boot_info: &'static mut bootloader_api::BootInfo) -> ! {
 }
 
 #[inline]
-fn early_init(boot_info: &'static mut BootInfo) {
-    initialize_virtual_memory(
+fn early_init(boot_info: &'static mut BootInfo) -> *mut u8 {
+    let ret = initialize_virtual_memory(
         VirtAddr::new(
             boot_info
                 .physical_memory_offset
@@ -84,11 +84,13 @@ fn early_init(boot_info: &'static mut BootInfo) {
         boot_info.framebuffer.as_mut();
     init_framebuffer(fb_option);
     clear();
+    ret
 }
 
-fn hardware_init(boot_info: &BootInfo) {
-    debug!("Initializing hardware on boot CPU");
-    arch::init(boot_info);
+fn hardware_init(boot_info: &BootInfo, ipi_frame: *mut u8) {
+    let cpu = get_current_cpu();
+    debug!("Initializing hardware on boot CPU (ACPI ID: {})", cpu);
+    arch::init(boot_info, ipi_frame);
 }
 
 fn clear() {

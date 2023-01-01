@@ -26,3 +26,8 @@ raw-cpuid = "10.2"
 x86 = { version = "0.52", default-features = false }
 pic8259 = "0.10"
 acpi = "4.1"
+
+
+[build-dependencies]
+nasm-rs="0.2.4"
+walkdir = "2"

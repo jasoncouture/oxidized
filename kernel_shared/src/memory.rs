@@ -26,10 +26,3 @@ pub unsafe extern "C" fn memcpy(dest: *mut u8, src: *const u8, n: usize) -> *mut
 
     dest
 }
-
-#[cfg(not(target_feature="kernel"))]
-pub extern "C" fn allocate_page() -> *mut u8 {
-    use crate::constants::NULL_POINTER;
-
-    NULL_POINTER
-}

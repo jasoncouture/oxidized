@@ -3,20 +3,25 @@ pub(crate) mod idt;
 pub(crate) mod syscall;
 pub(crate) mod acpi;
 pub(crate) mod apic;
+mod cpu;
 
-use alloc::string::{String, ToString};
+use alloc::{string::{String, ToString}, collections::BTreeMap};
 use bootloader_api::BootInfo;
 use lazy_static::lazy_static;
 use pic8259::ChainedPics;
 use x86::cpuid::CpuId;
 use x86_64::instructions::interrupts;
 
-use crate::debug;
+use crate::{debug, arch::arch_x86_64::{cpu::start_additional_cpus, acpi::ACPI_TABLES}};
+
+use self::cpu::cpu_apic_id;
 
 pub const PIC_1_OFFSET: u8 = 32;
 pub const PIC_2_OFFSET: u8 = PIC_1_OFFSET + 8;
 
-pub fn init_hardware(boot_info: &BootInfo) {
+
+
+pub fn init_hardware(boot_info: &BootInfo, ipi_frame: *mut u8) {
     debug!("Initializing GDT");
     gdt::init();
     debug!("Initializing IDT");
@@ -25,6 +30,9 @@ pub fn init_hardware(boot_info: &BootInfo) {
     acpi::init(boot_info.rsdp_addr.into_option());
     debug!("Initializing APIC");
     apic::init();
+    
+    start_additional_cpus(ipi_frame);
+
     debug!("Initializing syscalls");
     syscall::init();
 }
@@ -70,4 +78,8 @@ pub fn enable_interrupts_hardware() {
 
 pub fn wait_for_interrupt_hardware() {
     interrupts::enable_and_hlt();
+}
+
+pub fn current_cpu() -> u8 {
+    cpu_apic_id()
 }

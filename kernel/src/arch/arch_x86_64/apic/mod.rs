@@ -19,6 +19,9 @@ const APIC_REGISTER_OFFSET_LOCAL_VECTOR_TABLE_TIMER: usize = 0x320;
 const APIC_REGISTER_OFFSET_TIMER_DIVISOR: usize = 0x3E0;
 const APIC_REGISTER_OFFSET_TIMER_INITIAL_COUNT: usize = 0x380;
 const APIC_REGISTER_OFFSET_END_OF_INTERRUPT: usize = 0x0B0;
+const APIC_REGISTER_OFFSET_ERROR_STATUS: usize = 0x280;
+const APIC_REGISTER_IPI_LOW: usize = 0x300;
+const APIC_REGISTER_IPI_HIGH: usize = 0x310;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub struct AdvancedProgrammableInterruptController {
@@ -27,73 +30,174 @@ pub struct AdvancedProgrammableInterruptController {
 
 impl AdvancedProgrammableInterruptController {
     fn read_register(self, register: usize) -> u32 {
-        let register_address = register & APIC_REGISTER_ADDRESS_MASK;
-        let pointer = ((self.address as usize) + register_address) as *mut u32;
-        unsafe {
-            let result = pointer.read_volatile();
-            result
-        }
+        let pointer = self.get_register_pointer(register);
+        unsafe { pointer.read_volatile() }
     }
 
+    #[inline]
+    fn get_register_pointer(self, register: usize) -> *mut u32 {
+        let register_address = (register & APIC_REGISTER_ADDRESS_MASK) as isize;
+        unsafe { self.address.offset(register as isize) as *mut u32 }
+    }
+
+    #[inline]
     fn write_register(self, register: usize, value: u32) {
-        let register_address = register & APIC_REGISTER_ADDRESS_MASK;
-        let pointer = ((self.address as usize) + register_address) as *mut u32;
+        let pointer = self.get_register_pointer(register);
         unsafe {
             pointer.write_volatile(value);
         }
     }
 
+    #[inline]
     pub fn get_apic_id(self) -> u32 {
         self.read_register(APIC_REGISTER_OFFSET_ID)
     }
+
+    #[inline]
     pub fn set_apic_id(self, value: u32) {
         self.write_register(APIC_REGISTER_OFFSET_ID, value);
     }
 
+    #[inline]
     pub fn get_version(self) -> u32 {
         self.read_register(APIC_REGISTER_OFFSET_VERSION)
     }
 
+    #[inline]
     pub fn get_task_priority(self) -> u32 {
         self.read_register(APIC_REGISTER_OFFSET_TASK_PRIORITY)
     }
 
+    #[inline]
     pub fn get_arbiration_priority(self) -> u32 {
         self.read_register(APIC_REGISTER_OFFSET_ARBITRATION_PRIORITY)
     }
 
+    #[inline]
     pub fn get_processor_priority(self) -> u32 {
         self.read_register(APIC_REGISTER_OFFSET_PROCESSOR_PRIORITY)
     }
 
+    #[inline]
     pub fn get_spurious_interrupt_vector(self) -> u32 {
         self.read_register(APIC_REGISTER_OFFSET_SPURIOUS_INTERRUPT_VECTOR)
     }
+
+    #[inline]
     pub fn set_spurious_interrupt_vector(self, value: u32) {
         self.write_register(APIC_REGISTER_OFFSET_SPURIOUS_INTERRUPT_VECTOR, value)
     }
+
+    #[inline]
     pub fn get_local_vector_table_timer(self) -> u32 {
         self.read_register(APIC_REGISTER_OFFSET_LOCAL_VECTOR_TABLE_TIMER)
     }
 
+    #[inline]
     pub fn set_local_vector_table_timer(self, value: u32) {
         self.write_register(APIC_REGISTER_OFFSET_LOCAL_VECTOR_TABLE_TIMER, value);
     }
 
+    #[inline]
     pub fn get_timer_divisor(self) -> u32 {
         self.read_register(APIC_REGISTER_OFFSET_TIMER_DIVISOR)
     }
 
+    #[inline]
     pub fn set_timer_divisor(self, value: u32) {
         self.write_register(APIC_REGISTER_OFFSET_TIMER_DIVISOR, value);
     }
 
+    #[inline]
     pub fn set_timer_initial_count(self, value: u32) {
         self.write_register(APIC_REGISTER_OFFSET_TIMER_INITIAL_COUNT, value);
     }
 
-    pub fn end_of_interrupt(&self) {
+    #[inline]
+    pub fn end_of_interrupt(self) {
         self.write_register(APIC_REGISTER_OFFSET_END_OF_INTERRUPT, 0);
+    }
+
+    #[inline]
+    pub fn get_error_status(self) -> u32 {
+        self.read_register(APIC_REGISTER_OFFSET_ERROR_STATUS)
+    }
+
+    #[inline]
+    pub fn set_error_status(self, value: u32) {
+        self.write_register(APIC_REGISTER_OFFSET_ERROR_STATUS, value)
+    }
+
+    #[inline]
+    pub fn get_ipi_high(self) -> u32 {
+        self.read_register(APIC_REGISTER_IPI_HIGH)
+    }
+
+    #[inline]
+    pub fn get_ipi_low(self) -> u32 {
+        self.read_register(APIC_REGISTER_IPI_LOW)
+    }
+
+    #[inline]
+    pub fn get_ipi(self) -> u64 {
+        let ipi_high = self.get_ipi_high() as u64;
+        let ipi_low = self.get_ipi_low() as u64;
+
+        (ipi_high << 32) | (ipi_low & u32::MAX as u64)
+    }
+
+    #[inline]
+    pub fn wait_for_ipi_delivery(self) {
+        const PENDING: u32 = 1 << 12;
+        while self.get_ipi_high() & PENDING == PENDING {
+            core::hint::spin_loop();
+        }
+    }
+
+    #[inline]
+    pub fn send_ipi_init(self, cpu_id: u64) {
+        // SIPI
+        debug!("CPU: INIT -> {}", cpu_id);
+        let mut icr = 0x4500;
+        icr |= cpu_id << 56;
+        self.wait_for_ipi_delivery();
+        self.send_ipi(icr);
+        self.wait_for_ipi_delivery();
+    }
+
+    #[inline]
+    pub fn send_ipi_start(self, cpu_id: u64, segment: u8) {
+        let mut icr = 0x4600 | segment as u64;
+        icr |= (cpu_id as u64) << 56;
+        debug!("CPU: START -> {}", cpu_id);
+        self.wait_for_ipi_delivery();
+        self.send_ipi(icr);
+        self.wait_for_ipi_delivery();
+    }
+
+    #[inline]
+    pub fn send_ipi_32(self, ipi_high: u32, ipi_low: u32) {
+        self.set_ipi_high(ipi_high);
+        self.set_ipi_low(ipi_low);
+    }
+
+    #[inline]
+    pub fn send_ipi(self, value: u64) {
+        let ipi_high = (value >> 32) & u32::MAX as u64;
+        let ipi_high = ipi_high as u32;
+        let ipi_low = value as u32;
+
+        self.send_ipi_32(ipi_high, ipi_low)
+    }
+
+    #[inline]
+    pub fn set_ipi_high(self, value: u32) {
+        self.write_register(APIC_REGISTER_IPI_HIGH, value);
+    }
+
+    #[inline]
+    pub fn set_ipi_low(self, value: u32) {
+        self.write_register(APIC_REGISTER_IPI_LOW, value);
     }
 }
 

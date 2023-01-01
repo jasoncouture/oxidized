@@ -33,7 +33,7 @@ impl AcpiHandler for AcpiHandlerImpl {
 }
 
 static ACPI_HANDLER: AcpiHandlerImpl = AcpiHandlerImpl {};
-static mut ACPI_TABLES: OnceCell<AcpiTables<AcpiHandlerImpl>> = OnceCell::new();
+pub(crate) static mut ACPI_TABLES: OnceCell<AcpiTables<AcpiHandlerImpl>> = OnceCell::new();
 
 unsafe fn load_acpi(rsdp_addr: Option<u64>) -> AcpiTables<AcpiHandlerImpl> {
     match rsdp_addr {

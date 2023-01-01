@@ -50,6 +50,27 @@ impl BootInfoFrameAllocator {
     pub fn get_memory_regions(self: &Self) -> &MemoryRegions {
         self.memory_map.unwrap()
     }
+
+    pub fn get_next_usable_page(&self) -> Option<PhysAddr> {
+        let iter = self.usable_frames().filter(|frame| self.is_usable(frame.start_address().as_u64() as usize));
+        for i in iter {
+            return Some(i.start_address());
+        }
+
+        return None
+    }
+
+    pub fn reserve_page(&mut self, address: PhysAddr) {
+        let page = Self::get_page(address.as_u64() as usize);
+        self.used_pages.set(page, true);
+    }
+
+    pub fn unreserve_page(&mut self, address: PhysAddr) {
+
+        let page = Self::get_page(address.as_u64() as usize);
+        self.used_pages.set(page, true);
+    }
+
     /// Create a FrameAllocator from the passed memory map.
     ///
     /// This function is unsafe because the caller must guarantee that the passed
@@ -74,6 +95,29 @@ impl BootInfoFrameAllocator {
         // create `PhysFrame` types from the start addresses
         frame_addresses.map(|addr| PhysFrame::containing_address(PhysAddr::new(addr)))
     }
+
+    fn is_usable(&self, page: usize) -> bool {
+        if page >= self.used_pages.len() {
+            return false;
+        }
+        let address = (page << 12) as u64;
+        for region in self.memory_map.unwrap().iter() {
+            if address < region.start || address >= region.end {
+                continue;
+            }
+            if region.kind != MemoryRegionKind::Usable {
+                break;
+            }
+
+            if self.used_pages[page] {
+                return false;
+            }
+
+            return true;
+        }
+        false
+    }
+
     #[inline]
     fn get_page(frame: usize) -> usize {
         frame >> 12
@@ -82,37 +126,56 @@ impl BootInfoFrameAllocator {
         let page = Self::get_page(frame.as_u64() as usize);
         self.used_pages.set(page, false);
     }
+
+    fn allocate_contigious_pages_starting_at(
+        &mut self,
+        page: usize,
+        count: usize,
+    ) -> Option<PhysFrame> {
+        if page + count > self.used_pages.len() {
+            return None;
+        }
+        let start_page_address = (page >> 12) as u64;
+        let end_page_address = ((page + count) >> 12) as u64;
+        let usable_pages = self
+            .usable_frames()
+            .filter(|frame| frame.start_address().as_u64() >= start_page_address)
+            .filter(|frame| frame.start_address().as_u64() < end_page_address)
+            .filter(|frame| {
+                !self.used_pages[Self::get_page(frame.start_address().as_u64() as usize)]
+            })
+            .count();
+        let usable_count = usable_pages;
+        if usable_count != count {
+            return None;
+        }
+        // mark the range as in use.
+        for i in 0..count {
+            self.used_pages.set(page + i, true);
+        }
+
+        Some(PhysFrame::containing_address(PhysAddr::new(
+            start_page_address,
+        )))
+    }
+
+    pub fn allocate_contigious_pages(&mut self, count: usize) -> Option<PhysFrame> {
+        for frame in self.usable_frames() {
+            let page = Self::get_page(frame.start_address().as_u64() as usize);
+            if page == 0 || page >= self.used_pages.len() || self.used_pages[page] {
+                continue;
+            }
+
+            if let Some(frame) = self.allocate_contigious_pages_starting_at(page, count) {
+                return Some(frame);
+            }
+        }
+        return None;
+    }
 }
 unsafe impl FrameAllocator<Size4KiB> for BootInfoFrameAllocator {
     fn allocate_frame(&mut self) -> Option<PhysFrame> {
-        loop {
-            let mut current_frame = self.next;
-            for frame in self.usable_frames().skip(current_frame) {
-                let frame_address = frame.start_address().as_u64() as usize;
-                if frame_address == 0 {
-                    continue;
-                }
-                // Same as / 4096, but faster.
-                let page = Self::get_page(frame_address);
-                current_frame += 1;
-                if page >= self.used_pages.len() {
-                    continue;
-                }
-                if !self.used_pages[page] {
-                    self.next = current_frame;
-                    self.used_pages.set(page, true);
-                    return Some(frame);
-                }
-            }
-            // if we started at 0, we're out of physical memory...
-            if self.next == 0 {
-                println!("Failed to allocate memory page!");
-                return None;
-            }
-            println!("Failed to find a free page, resetting start offset and trying again.");
-            // otherwise, restart our scan at the first page.
-            self.next = 0;
-        }
+        self.allocate_contigious_pages(1)
     }
 }
 pub fn init_frame_allocator(memory_map: &'static MemoryRegions) {

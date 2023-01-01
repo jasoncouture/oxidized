@@ -10,8 +10,8 @@ use bootloader_api::BootInfo;
 use self::arch_x86_64::idt::get_timer_ticks_hardware;
 
 #[inline]
-pub fn init(boot_info: &BootInfo) {
-    init_hardware(boot_info);
+pub fn init(boot_info: &BootInfo, ipi_frame: *mut u8) {
+    init_hardware(boot_info, ipi_frame);
 }
 
 #[inline]
@@ -42,4 +42,9 @@ pub fn wait_for_interrupt() {
 #[inline]
 pub fn get_timer_ticks() -> usize {
     get_timer_ticks_hardware()
+}
+
+#[inline]
+pub fn get_current_cpu() -> u8 {
+    current_cpu()
 }

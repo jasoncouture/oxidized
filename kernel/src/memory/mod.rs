@@ -22,14 +22,18 @@ impl MemoryManager {
     }
 
     pub fn identity_map_writable_data_for_kernel(&mut self, physical_address: PhysAddr) {
-        let frame = PhysFrame::<Size4KiB>::containing_address(physical_address);
+        self.identity_map(physical_address, PageTableFlags::PRESENT | PageTableFlags::WRITABLE | PageTableFlags::NO_EXECUTE);
+    }
+
+    pub fn identity_map(&mut self, address: PhysAddr, flags: PageTableFlags) {
+        let frame = PhysFrame::<Size4KiB>::containing_address(address);
         unsafe {
             self.page_table
                 .as_mut()
                 .unwrap()
                 .identity_map(
                     frame,
-                    PageTableFlags::PRESENT | PageTableFlags::WRITABLE | PageTableFlags::NO_EXECUTE,
+                    flags,
                     &mut KERNEL_FRAME_ALLOCATOR,
                 )
                 .expect("Unable to identity map memory!")
@@ -61,7 +65,7 @@ unsafe fn get_active_page_table(base_address: VirtAddr) -> &'static mut PageTabl
 pub(crate) fn initialize_virtual_memory(
     base_address: VirtAddr,
     memory_map: &'static MemoryRegions,
-) {
+) -> *mut u8 {
     unsafe {
         {
             let mut_memory_manager = &mut KERNEL_MEMORY_MANAGER.lock();
@@ -72,8 +76,14 @@ pub(crate) fn initialize_virtual_memory(
         }
         // and boot up the frame allocator
         init_frame_allocator(memory_map);
+        let next_page = KERNEL_FRAME_ALLOCATOR.get_next_usable_page();
+        let pointer = match next_page {
+            Some(p) => p.as_u64() as *mut u8,
+            None => panic!("Could not allocate ipi trampoline frame!")
+        };
         // And then the heap.
         init_kernel_heap().expect("Failed to initialize kernel heap");
         verbose!("Heap and virtual memory initialized.");
+        pointer
     }
 }
