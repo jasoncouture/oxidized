@@ -1,3 +1,5 @@
+use core::intrinsics::caller_location;
+
 use bitvec::prelude::*;
 use bootloader_api::info::{MemoryRegionKind, MemoryRegions};
 use linked_list_allocator::LockedHeap;
@@ -14,7 +16,7 @@ use super::KERNEL_MEMORY_MANAGER;
 
 #[alloc_error_handler]
 fn alloc_error_handler(layout: alloc::alloc::Layout) -> ! {
-    panic!("allocation error: {:?}", layout)
+    panic!("allocation error: {:?}", layout);
 }
 
 #[global_allocator]
@@ -22,8 +24,7 @@ static ALLOCATOR: LockedHeap = LockedHeap::empty();
 
 pub const PAGE_SIZE: usize = 4096;
 pub const KERNEL_HEAP_START: usize = 0x_4444_4444_0000;
-pub const KERNEL_HEAP_PAGES: usize = 512;
-pub const KERNEL_HEAP_SIZE: usize = KERNEL_HEAP_PAGES * PAGE_SIZE;
+pub const KERNEL_HEAP_PAGES: usize = 4096;
 pub const ONE_MEGABYTE: usize = 1024 * 1024;
 pub const ONE_GIGABTYE: usize = ONE_MEGABYTE * 1024;
 pub const ONE_TERABYTE: usize = ONE_GIGABTYE * 1024;
@@ -51,22 +52,12 @@ impl BootInfoFrameAllocator {
         self.memory_map.unwrap()
     }
 
-    pub fn get_next_usable_page(&self) -> Option<PhysAddr> {
-        let iter = self.usable_frames().filter(|frame| self.is_usable(frame.start_address().as_u64() as usize));
-        for i in iter {
-            return Some(i.start_address());
-        }
-
-        return None
-    }
-
     pub fn reserve_page(&mut self, address: PhysAddr) {
         let page = Self::get_page(address.as_u64() as usize);
         self.used_pages.set(page, true);
     }
 
     pub fn unreserve_page(&mut self, address: PhysAddr) {
-
         let page = Self::get_page(address.as_u64() as usize);
         self.used_pages.set(page, true);
     }
@@ -126,56 +117,44 @@ impl BootInfoFrameAllocator {
         let page = Self::get_page(frame.as_u64() as usize);
         self.used_pages.set(page, false);
     }
-
-    fn allocate_contigious_pages_starting_at(
-        &mut self,
-        page: usize,
-        count: usize,
-    ) -> Option<PhysFrame> {
-        if page + count > self.used_pages.len() {
-            return None;
-        }
-        let start_page_address = (page >> 12) as u64;
-        let end_page_address = ((page + count) >> 12) as u64;
-        let usable_pages = self
-            .usable_frames()
-            .filter(|frame| frame.start_address().as_u64() >= start_page_address)
-            .filter(|frame| frame.start_address().as_u64() < end_page_address)
-            .filter(|frame| {
-                !self.used_pages[Self::get_page(frame.start_address().as_u64() as usize)]
-            })
-            .count();
-        let usable_count = usable_pages;
-        if usable_count != count {
-            return None;
-        }
-        // mark the range as in use.
-        for i in 0..count {
-            self.used_pages.set(page + i, true);
-        }
-
-        Some(PhysFrame::containing_address(PhysAddr::new(
-            start_page_address,
-        )))
-    }
-
-    pub fn allocate_contigious_pages(&mut self, count: usize) -> Option<PhysFrame> {
-        for frame in self.usable_frames() {
-            let page = Self::get_page(frame.start_address().as_u64() as usize);
-            if page == 0 || page >= self.used_pages.len() || self.used_pages[page] {
-                continue;
-            }
-
-            if let Some(frame) = self.allocate_contigious_pages_starting_at(page, count) {
-                return Some(frame);
-            }
-        }
-        return None;
-    }
 }
+
 unsafe impl FrameAllocator<Size4KiB> for BootInfoFrameAllocator {
     fn allocate_frame(&mut self) -> Option<PhysFrame> {
-        self.allocate_contigious_pages(1)
+        loop {
+            let mut current_frame = self.next;
+            for frame in self.usable_frames().skip(current_frame) {
+                let frame_address = frame.start_address().as_u64() as usize;
+                if frame_address == 0 {
+                    println!("Skipping frame 0, this will be guarded.");
+                    continue;
+                }
+                // Same as / 4096, but faster.
+                let page = Self::get_page(frame_address);
+                current_frame += 1;
+                if page >= self.used_pages.len() {
+                    println!(
+                        "Page {} is out of bounds! Starting over at first usable frame.",
+                        page
+                    );
+                    break;
+                }
+                if !self.used_pages[page] {
+                    self.next = current_frame;
+                    self.used_pages.set(page, true);
+                    println!("Allocated page: {}", page);
+                    return Some(frame);
+                }
+            }
+            // if we started at 0, we're out of physical memory...
+            if self.next == 0 {
+                println!("Failed to allocate memory page!");
+                return None;
+            }
+            println!("Failed to find a free page, resetting start offset and trying again.");
+            // otherwise, restart our scan at the first page.
+            self.next = 0;
+        }
     }
 }
 pub fn init_frame_allocator(memory_map: &'static MemoryRegions) {
@@ -184,31 +163,20 @@ pub fn init_frame_allocator(memory_map: &'static MemoryRegions) {
     }
 }
 pub fn init_kernel_heap() -> Result<(), MapToError<Size4KiB>> {
+    println!("Initializing heap");
     unsafe {
         let mut locked_memory_manager = KERNEL_MEMORY_MANAGER.lock();
-        let mapper = locked_memory_manager.page_table.as_mut().unwrap();
-        let frame_allocator = &mut KERNEL_FRAME_ALLOCATOR;
-        let page_range = {
-            let heap_start = VirtAddr::new(KERNEL_HEAP_START as u64);
-            let heap_end = heap_start + KERNEL_HEAP_SIZE - 1u64;
-            let heap_start_page = Page::containing_address(heap_start);
-            let heap_end_page = Page::containing_address(heap_end);
-            Page::range_inclusive(heap_start_page, heap_end_page)
-        };
-        for page in page_range {
-            let frame = frame_allocator
-                .allocate_frame()
-                .ok_or(MapToError::FrameAllocationFailed)?;
-            let flags =
-                PageTableFlags::PRESENT | PageTableFlags::WRITABLE | PageTableFlags::NO_EXECUTE;
-            mapper.map_to(page, frame, flags, frame_allocator)?.flush();
-        }
+        let heap = locked_memory_manager
+            .allocate_contigious_address_range(
+                KERNEL_HEAP_PAGES,
+                Some(VirtAddr::new(KERNEL_HEAP_START as u64)),
+                PageTableFlags::PRESENT | PageTableFlags::WRITABLE | PageTableFlags::NO_EXECUTE,
+            )
+            .expect("Failed to allocate heap");
+        
+        
 
-        // We've mapped the kernel heap to physical ranges, now we just need to tell the allocator about it.
-        let virt_addr_start = VirtAddr::new(KERNEL_HEAP_START as u64);
-        ALLOCATOR
-            .lock()
-            .init(virt_addr_start.as_mut_ptr(), KERNEL_HEAP_SIZE);
+        ALLOCATOR.lock().init(heap, KERNEL_HEAP_PAGES);
     }
 
     Ok(())

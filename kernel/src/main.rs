@@ -42,14 +42,12 @@ use crate::{
         arch_x86_64::{get_cpu_brand_string, get_cpu_vendor_string},
         enable_interrupts, get_timer_ticks, wait_for_interrupt, get_current_cpu,
     },
-    thread::context::CONTEXTS,
+    thread::context::CONTEXTS, serial::SERIAL1,
 };
 const CONFIG: bootloader_api::BootloaderConfig = {
     let mut config = bootloader_api::BootloaderConfig::new_default();
     config.kernel_stack_size = 1024 * 1024; // 1MiB
-    config.mappings.aslr = true;
     config.mappings.physical_memory = Some(Mapping::Dynamic);
-    //config.mappings.framebuffer = Mapping::Dynamic;
     config
 };
 
@@ -58,8 +56,11 @@ static mut BOOT_INFO: Option<NonNull<BootInfo>> = None;
 
 #[allow(unreachable_code)]
 fn kernel_boot(boot_info: &'static mut bootloader_api::BootInfo) -> ! {
+    println!("Booting");
     unsafe {
+        println!("Creating boot info pointer");
         BOOT_INFO = NonNull::new(boot_info);
+        println!("Starting early init");
         let ipi_frame = early_init(BOOT_INFO.unwrap().as_mut());
         hardware_init(BOOT_INFO.unwrap().as_mut(), ipi_frame);
     }
@@ -70,6 +71,7 @@ fn kernel_boot(boot_info: &'static mut bootloader_api::BootInfo) -> ! {
 
 #[inline]
 fn early_init(boot_info: &'static mut BootInfo) -> *mut u8 {
+    println!("Initializing virtual memory");
     let ret = initialize_virtual_memory(
         VirtAddr::new(
             boot_info
@@ -79,6 +81,7 @@ fn early_init(boot_info: &'static mut BootInfo) -> *mut u8 {
         ),
         &boot_info.memory_regions,
     );
+    println!("Virtual memory online, with IPI Trampoline frame: {:p}", ret);
     debug!("Setting up framebuffer");
     let fb_option: Option<&'static mut bootloader_api::info::FrameBuffer> =
         boot_info.framebuffer.as_mut();

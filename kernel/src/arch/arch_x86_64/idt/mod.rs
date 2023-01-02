@@ -113,9 +113,10 @@ impl InterruptHandlers {
         error_code: PageFaultErrorCode,
     ) {
         panic!(
-            "Page fault in early memory manager, stack frame IP: {:#016x}, error code: {:?}",
+            "Page fault in early memory manager, stack frame IP: {:#016x}, error code: {:?}\n{:?}",
             stack_frame.instruction_pointer.as_u64(),
-            error_code
+            error_code,
+            stack_frame
         );
     }
 }

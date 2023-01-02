@@ -6,7 +6,7 @@ use lazy_static::lazy_static;
 use raw_cpuid::cpuid;
 use spin::Mutex;
 use x86::msr::{wrmsr, IA32_X2APIC_ICR};
-use x86_64::PhysAddr;
+use x86_64::{structures::paging::PageTableFlags, PhysAddr};
 
 const CPU_STACK_PAGES: usize = 16;
 
@@ -88,16 +88,15 @@ fn wait_for_cpu_online(cpu_id: usize, trampoline_frame: *mut u8) {
 
 pub fn create_ap_stack(size: usize) -> *const u8 {
     let pages = (size / PAGE_SIZE) + 1;
-    unsafe {
-        let allocated_page = KERNEL_FRAME_ALLOCATOR
-            .allocate_contigious_pages(pages)
-            .expect("Could not allocate stack to bring up a CPU!!!");
-        // Translate it to a virtual address
-        KERNEL_MEMORY_MANAGER
-            .lock()
-            .translate(allocated_page.start_address())
-            .as_u64() as usize as *const u8
-    }
+
+    let mut locked_manager = KERNEL_MEMORY_MANAGER.lock();
+    locked_manager
+        .allocate_contigious_address_range(
+            pages,
+            None,
+            PageTableFlags::WRITABLE | PageTableFlags::PRESENT | PageTableFlags::NO_EXECUTE,
+        )
+        .expect("Unable to allocate CPU Stack space!") as *const u8
 }
 /*
 trampoline:

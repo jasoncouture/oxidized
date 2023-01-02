@@ -7,7 +7,7 @@ use x86_64::{PhysAddr, VirtAddr};
 use crate::{
     debug,
     memory::{self, allocator::KERNEL_FRAME_ALLOCATOR, KERNEL_MEMORY_MANAGER},
-    warn,
+    warn, println,
 };
 
 #[derive(Clone, Copy)]
@@ -21,8 +21,8 @@ impl AcpiHandler for AcpiHandlerImpl {
     ) -> acpi::PhysicalMapping<Self, T> {
         let memory_manager = KERNEL_MEMORY_MANAGER.lock();
         let mapped_address = memory_manager.translate(PhysAddr::new(physical_address as u64));
-
         let val = mapped_address.as_ptr() as *const T;
+        println!("Mapping {:p} for ACPI", val);
         let nonnull_val = NonNull::from(val.as_ref().unwrap());
         acpi::PhysicalMapping::new(physical_address, nonnull_val, size, size, *self)
     }
@@ -76,8 +76,5 @@ pub(crate) fn init(rsdp_addr: Option<u64>) {
 
         debug!("Processor info:");
         debug!("-- {:?}", cpu_info.boot_processor);
-        for processor in cpu_info.application_processors {
-            debug!("-- {:?}", processor);
-        }
     };
 }
