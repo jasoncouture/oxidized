@@ -70,8 +70,6 @@ dependencies = [
 [[package]]
 name = "bootloader"
 version = "0.11.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d8880371b6167e7b3aaf341ee9a2f41de1e09215e9e6fb2460d10ee080edda6d"
 dependencies = [
  "anyhow",
  "fatfs",
@@ -84,8 +82,6 @@ dependencies = [
 [[package]]
 name = "bootloader_api"
 version = "0.11.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "babfb07dea4565842980315ad530a023aa348db43d03dfa104a70fdaca97d48e"
 
 [[package]]
 name = "build_const"
@@ -447,7 +443,7 @@ checksum = "86f0b0d4bf799edbc74508c1e8bf170ff5f41238e5f8225603ca7caaae2b7860"
 
 [[package]]
 name = "os"
-version = "0.1.0"
+version = "0.11.0"
 dependencies = [
  "bootloader",
  "kernel",
