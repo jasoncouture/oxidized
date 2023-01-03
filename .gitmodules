@@ -1,0 +1,4 @@
+[submodule "bootloader"]
+	path = bootloader
+	url = git@github.com:jasoncouture/bootloader.git
+    branch = load_ramdisk_feature
