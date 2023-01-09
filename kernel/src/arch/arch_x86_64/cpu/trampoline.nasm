@@ -13,166 +13,128 @@ trampoline:
     .stack_start: dq 0
     .stack_end: dq 0
     .code: dq 0
-
+    .booting: dq 0
+ALIGN 16
+ALIGN 4
 startup_ap:
+    cld
     cli
-
+    ; zero our code segment, the assembler thinks we're in CS 0, so make it so.
     xor ax, ax
+    mov cs, ax
     mov ds, ax
     mov es, ax
     mov ss, ax
+    ; Load IDT
+    lidt [idt]
+    lgdt [gdtr]
+    mov eax, 1
+    mov [trampoline.booting], eax
 
-    ; initialize stack to invalid value
-    mov sp, 0
-
+    ; compute and setup the early stack, we'll need it to preserve EDX through wrmsr
+    mov ax, early_stack.end - 256
+    mov sp, ax
+    mov eax, 3
+    mov [trampoline.booting], eax
+    
     ; cr3 holds pointer to PML4
-    mov edi, [trampoline.page_table]
-    mov cr3, edi
-
+    mov eax, [trampoline.page_table]
+    mov cr3, eax
+    mov eax, 5
+    mov [trampoline.booting], eax
     ; enable FPU
     mov eax, cr0
-    and al, 11110011b ; Clear task switched (3) and emulation (2)
+    ; define the bits in CR0 we want to clear
+    ; cache disable (30), Not-write through (29) Task switched (3), x87 emulation (2)
+    and ebx, 1 << 30 | 1 << 29 | 1 << 3 | 1 << 2
+    xor ebx, 0xFFFFFFFF ; invert bits to get our mask
+    and eax, ebx
     or al, 00100010b ; Set numeric error (5) monitor co-processor (1)
     mov cr0, eax
-
+    
     ; 9: FXSAVE/FXRSTOR
     ; 7: Page Global
     ; 5: Page Address Extension
     ; 4: Page Size Extension
+    ; or eax, 1 << 9 | 1 << 7 | 1 << 5 | 1 << 4
+    ; 5: Page Address Extension
+    ; 4: Page Size Extension
+    ; or eax, 1 << 5 | 1 << 4
+    ; 10: Unmasked SIMD Exceptions
+    ; 9: FXSAVE/FXRSTOR
+    ; 6: Machine Check Exception	
+    ; 5: Page Address Extension
+    ; 3: Debugging Extensions
     mov eax, cr4
-    or eax, 1 << 9 | 1 << 7 | 1 << 5 | 1 << 4
+    or eax, 1 << 10 | 1 << 9 | 1 << 6 | 1 << 5 | 1 << 3
     mov cr4, eax
 
     ; initialize floating point registers
     fninit
-
-    ; load protected mode GDT
-    lgdt [gdtr]
+    
+    mov eax, 6
+    mov [trampoline.booting], eax
 
     ; enable long mode
     mov ecx, 0xC0000080               ; Read from the EFER MSR.
     rdmsr
-    or eax, 1 << 11 | 1 << 8          ; Set the Long-Mode-Enable and NXE bit.
+    or eax, 1 << 11 | 1 << 14 | 1 << 8 
     wrmsr
-
+    mov eax, 7
+    mov [trampoline.booting], eax
     ; enabling paging and protection simultaneously
-    mov ebx, cr0
+    mov eax, cr0
     ; 31: Paging
-    ; 16: write protect kernel
+    ; 16: Enable write protection for ring 0
+    ; 5: Numeric error
+    ; 4: Extension type
+    ; 1: Monitor co-processor
     ; 0: Protected Mode
-    or ebx, 1 << 31 | 1 << 16 | 1
-    mov cr0, ebx
-
-    ; far jump to enable Long Mode and load CS with 64 bit segment
+    ; or eax, 1 << 31 | 1 << 16 | 1 << 5 | 1 << 4 | 1 << 1 | 1 << 0
+    or eax, 1 << 31 | 1 << 16 | 1 << 0
+    mov cr0, eax
+    lgdt [gdtr]
     jmp gdt.kernel_code:long_mode_ap
+
+align 16
 
 USE64
 long_mode_ap:
     mov rax, gdt.kernel_data
     mov ds, rax
     mov es, rax
-    mov fs, rax
-    mov gs, rax
     mov ss, rax
-
-    mov rcx, [trampoline.stack_end]
-    lea rsp, [rcx - 256]
-
-    mov rdi, trampoline.cpu_id
-
-    mov rax, [trampoline.code]
-    mov qword [trampoline.ready], 1
-    jmp rax
+    mov rax, [trampoline.stack_end]
+    mov rsp, rax
+    mov rbx, [trampoline.code]
+    jmp far qword [trampoline.code]
 halt_loop:
     cli
     hlt
     jmp short halt_loop;
 
-struc GDTEntry
-    .limitl resw 1
-    .basel resw 1
-    .basem resb 1
-    .attribute resb 1
-    .flags__limith resb 1
-    .baseh resb 1
-endstruc
-
-attrib:
-    .present              equ 1 << 7
-    .ring1                equ 1 << 5
-    .ring2                equ 1 << 6
-    .ring3                equ 1 << 5 | 1 << 6
-    .user                 equ 1 << 4
-;user
-    .code                 equ 1 << 3
-;   code
-    .conforming           equ 1 << 2
-    .readable             equ 1 << 1
-;   data
-    .expand_down          equ 1 << 2
-    .writable             equ 1 << 1
-    .accessed             equ 1 << 0
-;system
-;   legacy
-    .tssAvailabe16        equ 0x1
-    .ldt                  equ 0x2
-    .tssBusy16            equ 0x3
-    .call16               equ 0x4
-    .task                 equ 0x5
-    .interrupt16          equ 0x6
-    .trap16               equ 0x7
-    .tssAvailabe32        equ 0x9
-    .tssBusy32            equ 0xB
-    .call32               equ 0xC
-    .interrupt32          equ 0xE
-    .trap32               equ 0xF
-;   long mode
-    .ldt32                equ 0x2
-    .tssAvailabe64        equ 0x9
-    .tssBusy64            equ 0xB
-    .call64               equ 0xC
-    .interrupt64          equ 0xE
-    .trap64               equ 0xF
-
-flags:
-    .granularity equ 1 << 7
-    .available equ 1 << 4
-;user
-    .default_operand_size equ 1 << 6
-;   code
-    .long_mode equ 1 << 5
-;   data
-    .reserved equ 1 << 5
-
-gdtr:
-    dw gdt.end + 1  ; size
-    dq gdt          ; offset
-
+ALIGN 16
+;temporary GDT, we'll set this in code later.
 gdt:
 .null equ $ - gdt
     dq 0
-
 .kernel_code equ $ - gdt
-istruc GDTEntry
-    at GDTEntry.limitl, dw 0
-    at GDTEntry.basel, dw 0
-    at GDTEntry.basem, db 0
-    at GDTEntry.attribute, db attrib.present | attrib.user | attrib.code
-    at GDTEntry.flags__limith, db flags.long_mode
-    at GDTEntry.baseh, db 0
-iend
-
+    dq 0x00209A0000000000             ; 64-bit code descriptor (exec/read).
 .kernel_data equ $ - gdt
-istruc GDTEntry
-    at GDTEntry.limitl, dw 0
-    at GDTEntry.basel, dw 0
-    at GDTEntry.basem, db 0
-; AMD System Programming Manual states that the writeable bit is ignored in long mode, but ss can not be set to this descriptor without it
-    at GDTEntry.attribute, db attrib.present | attrib.user | attrib.writable
-    at GDTEntry.flags__limith, db 0
-    at GDTEntry.baseh, db 0
-iend
+    dq 0x0000920000000000             ; 64-bit data descriptor (read/write).
 
 .end equ $ - gdt
+gdtr:
+    dw gdt.end - 1 ; size
+    .offset dq gdt  ; offset
+; temporary IDT, we'll also set this in code later.
+ALIGN 16
+idt:
+    dw 0
+    dd 0
 
-entry: dq 0
+ALIGN 16
+early_stack:
+times 2048 db 0
+.end equ $
+times 256 db 0
