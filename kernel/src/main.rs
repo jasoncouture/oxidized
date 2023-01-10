@@ -11,11 +11,32 @@
 #![feature(naked_functions)]
 #![feature(pointer_byte_offsets)]
 #![feature(core_intrinsics)]
+#![feature(pointer_is_aligned)]
 //#[cfg_attr(target_arch = "x86_64")]
 #![test_runner(crate::test_runner::test_runner)]
 #![reexport_test_harness_main = "test_main"]
-include!(concat!(env!("OUT_DIR"), "/metadata_constants.rs"));
 extern crate alloc;
+
+use core::arch::asm;
+use core::ptr::NonNull;
+
+use bootloader_api::{config::Mapping, info::MemoryRegionKind, BootInfo};
+use x86_64::{software_interrupt, VirtAddr};
+
+use framebuffer::*;
+use memory::{allocator::{KERNEL_FRAME_ALLOCATOR, KERNEL_HEAP_START, PAGE_SIZE}, *};
+use thread::process::{process_manager, ProcessDescriptor, ProcessManager};
+
+use crate::{
+    arch::{
+        arch_x86_64::{get_cpu_brand_string, get_cpu_vendor_string},
+        enable_interrupts, get_current_cpu, get_timer_ticks, wait_for_interrupt,
+    },
+    serial::SERIAL1,
+    thread::context::CONTEXTS,
+};
+
+include!(concat!(env!("OUT_DIR"), "/metadata_constants.rs"));
 pub(crate) mod arch;
 pub(crate) mod console;
 pub(crate) mod framebuffer;
@@ -29,25 +50,13 @@ mod test_runner;
 pub mod thread;
 mod unit_tests;
 
-use bootloader_api::{config::Mapping, info::MemoryRegionKind, BootInfo};
-use core::arch::asm;
-use core::ptr::NonNull;
-use framebuffer::*;
-use memory::{allocator::KERNEL_FRAME_ALLOCATOR, *};
-use x86_64::{software_interrupt, VirtAddr};
-
-
-use crate::{
-    arch::{
-        arch_x86_64::{get_cpu_brand_string, get_cpu_vendor_string},
-        enable_interrupts, get_timer_ticks, wait_for_interrupt, get_current_cpu,
-    },
-    thread::context::CONTEXTS, serial::SERIAL1,
-};
 const CONFIG: bootloader_api::BootloaderConfig = {
     let mut config = bootloader_api::BootloaderConfig::new_default();
-    config.kernel_stack_size = 1024 * 1024; // 1MiB
+    config.mappings.aslr = true;
+    config.kernel_stack_size = 1024 * 256; // 256k
     config.mappings.physical_memory = Some(Mapping::Dynamic);
+    config.mappings.dynamic_range_end = Some(KERNEL_HEAP_START as u64);
+    config.mappings.dynamic_range_start = Some((PAGE_SIZE * 100) as u64); // Reserve the first 1mb of virtual address space. Please.
     config
 };
 
@@ -61,18 +70,17 @@ fn kernel_boot(boot_info: &'static mut bootloader_api::BootInfo) -> ! {
         println!("Creating boot info pointer");
         BOOT_INFO = NonNull::new(boot_info);
         println!("Starting early init");
-        let ipi_frame = early_init(BOOT_INFO.unwrap().as_mut());
-        hardware_init(BOOT_INFO.unwrap().as_mut(), ipi_frame);
+        early_init(BOOT_INFO.unwrap().as_mut());
+        hardware_init(BOOT_INFO.unwrap().as_mut());
     }
-    test_hook();
     kernel_main();
     panic!("Kernel exited, this should not happen!");
 }
 
 #[inline]
-fn early_init(boot_info: &'static mut BootInfo) -> *mut u8 {
+fn early_init(boot_info: &'static mut BootInfo) {
     println!("Initializing virtual memory");
-    let ret = initialize_virtual_memory(
+    initialize_virtual_memory(
         VirtAddr::new(
             boot_info
                 .physical_memory_offset
@@ -81,19 +89,16 @@ fn early_init(boot_info: &'static mut BootInfo) -> *mut u8 {
         ),
         &boot_info.memory_regions,
     );
-    println!("Virtual memory online, with IPI Trampoline frame: {:p}", ret);
     debug!("Setting up framebuffer");
     let fb_option: Option<&'static mut bootloader_api::info::FrameBuffer> =
         boot_info.framebuffer.as_mut();
     init_framebuffer(fb_option);
-    clear();
-    ret
 }
 
-fn hardware_init(boot_info: &BootInfo, ipi_frame: *mut u8) {
+fn hardware_init(boot_info: &BootInfo) {
     let cpu = get_current_cpu();
     debug!("Initializing hardware on boot CPU (ACPI ID: {})", cpu);
-    arch::init(boot_info, ipi_frame);
+    arch::init(boot_info);
 }
 
 fn clear() {
@@ -124,13 +129,7 @@ fn kernel_main() {
             );
         }
     }
-    unsafe {
-        let contexts = CONTEXTS.as_mut_ptr();
-        let idle_context = (*contexts).create_context();
-        (*idle_context).activate(0);
-        let another_context = (*contexts).create_context();
-        (*another_context).activate(0);
-    }
+    create_kernel_process();
     enable_interrupts();
     debug!("Requesting context switch");
     unsafe {
@@ -144,7 +143,12 @@ fn kernel_main() {
     }
 }
 
-fn test_hook() {
-    #[cfg(test)]
-    test_main();
+fn create_kernel_process() {
+    let manager = process_manager();
+    let process = manager.create_process();
+    debug!(
+        "Created kernel process \"{}\" with control group: {}",
+        process.get_id(),
+        process.get_control_group()
+    );
 }

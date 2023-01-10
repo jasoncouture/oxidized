@@ -1,37 +1,41 @@
-pub(crate) mod gdt;
-pub(crate) mod idt;
-pub(crate) mod syscall;
-pub(crate) mod acpi;
-pub(crate) mod apic;
-mod cpu;
+use alloc::{collections::BTreeMap, string::{String, ToString}};
 
-use alloc::{string::{String, ToString}, collections::BTreeMap};
 use bootloader_api::BootInfo;
 use lazy_static::lazy_static;
 use pic8259::ChainedPics;
 use x86::cpuid::CpuId;
 use x86_64::instructions::interrupts;
 
-use crate::{debug, arch::arch_x86_64::{cpu::start_additional_cpus, acpi::ACPI_TABLES}};
+use crate::{arch::arch_x86_64::{acpi::ACPI_TABLES, apic::LOCAL_APIC, cpu::start_additional_cpus}, debug, memory::allocator::KERNEL_FRAME_ALLOCATOR};
 
 use self::cpu::cpu_apic_id;
+
+pub(crate) mod gdt;
+pub(crate) mod idt;
+pub(crate) mod syscall;
+pub(crate) mod acpi;
+pub(crate) mod apic;
+mod cpu;
+mod timer;
 
 pub const PIC_1_OFFSET: u8 = 32;
 pub const PIC_2_OFFSET: u8 = PIC_1_OFFSET + 8;
 
+pub fn init_common() {
+}
 
-
-pub fn init_hardware(boot_info: &BootInfo, ipi_frame: *mut u8) {
+pub fn init_hardware(boot_info: &BootInfo) {
     debug!("Initializing GDT");
     gdt::init();
     debug!("Initializing IDT");
     idt::init();
+    debug!("Initializing delay loops");
+    timer::init();
     debug!("Initializing ACPI");
     acpi::init(boot_info.rsdp_addr.into_option());
     debug!("Initializing APIC");
     apic::init();
-    
-    start_additional_cpus(ipi_frame);
+    start_additional_cpus();
 
     debug!("Initializing syscalls");
     syscall::init();

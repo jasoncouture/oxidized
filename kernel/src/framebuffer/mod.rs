@@ -1,9 +1,12 @@
-use core::cmp::min;
 extern crate alloc;
+
 use alloc::boxed::Box;
+use core::cmp::min;
+
 use bootloader_api::info::*;
 use lazy_static::*;
 use spin::Mutex;
+
 use kernel_shared::memory::*;
 
 #[derive(Debug, Clone, Copy)]

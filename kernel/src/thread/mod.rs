@@ -1,8 +1,10 @@
 use alloc::{boxed::Box, vec::Vec};
-use x86_64::structures::{tss::TaskStateSegment, paging::PageTable};
 
-pub mod scheduler;
+use x86_64::structures::{paging::PageTable, tss::TaskStateSegment};
+
 pub(crate) mod context;
+pub(crate) mod process;
+pub(crate) mod scheduler;
 
 pub struct Context {
     // TODO
@@ -19,5 +21,5 @@ pub struct Thread {
     stack: Box<[u8]>,
     offset_page_table: Box<PageTable>,
     context: Context,
-    handles: Vec<Handle> 
+    handles: Vec<Handle>,
 }

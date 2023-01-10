@@ -1,12 +1,16 @@
-use acpi::InterruptModel::*;
 use alloc::string::{String, ToString};
-use x86_64::PhysAddr;
+use core::arch::asm;
+
+use acpi::InterruptModel::*;
+use x86_64::{
+    structures::paging::{PageTableFlags, PhysFrame},
+    PhysAddr,
+};
 
 use crate::{debug, memory::KERNEL_MEMORY_MANAGER};
 
-use super::acpi::get_acpi_tables;
+use super::{acpi::get_acpi_tables, timer::SPIN_TIMER};
 
-const APIC_REGISTER_MASK: usize = 0x0FF;
 const APIC_REGISTER_ADDRESS_MASK: usize = 0x0FF0;
 
 const APIC_REGISTER_OFFSET_ID: usize = 0x020;
@@ -37,14 +41,17 @@ impl AdvancedProgrammableInterruptController {
     #[inline]
     fn get_register_pointer(self, register: usize) -> *mut u32 {
         let register_address = (register & APIC_REGISTER_ADDRESS_MASK) as isize;
-        unsafe { self.address.offset(register as isize) as *mut u32 }
+        unsafe { self.address.byte_offset(register_address as isize) as *mut u32 }
     }
 
     #[inline]
     fn write_register(self, register: usize, value: u32) {
         let pointer = self.get_register_pointer(register);
+        let pointer = core::hint::black_box(pointer);
         unsafe {
+            asm!("sfence");
             pointer.write_volatile(value);
+            asm!("sfence");
         }
     }
 
@@ -156,29 +163,32 @@ impl AdvancedProgrammableInterruptController {
 
     #[inline]
     pub fn send_ipi_init(self, cpu_id: u64) {
-        // SIPI
-        debug!("CPU: INIT -> {}", cpu_id);
-        let mut icr = 0x4500;
-        icr |= cpu_id << 56;
-        self.wait_for_ipi_delivery();
-        self.send_ipi(icr);
+        self.clear_apic_errors();
+        // Assert INIT
+        let icr_value = cpu_id << 56 | 0x4500;
+        self.send_ipi(icr_value);
         self.wait_for_ipi_delivery();
     }
 
     #[inline]
     pub fn send_ipi_start(self, cpu_id: u64, segment: u8) {
-        let mut icr = 0x4600 | segment as u64;
-        icr |= (cpu_id as u64) << 56;
-        debug!("CPU: START -> {}", cpu_id);
-        self.wait_for_ipi_delivery();
-        self.send_ipi(icr);
+        self.clear_apic_errors();
+        // SIPI
+        let icr_value = cpu_id << 56 | 0x4600 | (segment as u64);
+        self.send_ipi(icr_value);
         self.wait_for_ipi_delivery();
     }
 
     #[inline]
     pub fn send_ipi_32(self, ipi_high: u32, ipi_low: u32) {
+        debug!("IPI: {:08x} {:08x}", ipi_high, ipi_low);
         self.set_ipi_high(ipi_high);
         self.set_ipi_low(ipi_low);
+        self.wait_for_ipi_delivery();
+    }
+
+    pub fn clear_apic_errors(self) {
+        self.write_register(APIC_REGISTER_OFFSET_ERROR_STATUS, 0);
     }
 
     #[inline]
@@ -186,8 +196,7 @@ impl AdvancedProgrammableInterruptController {
         let ipi_high = (value >> 32) & u32::MAX as u64;
         let ipi_high = ipi_high as u32;
         let ipi_low = value as u32;
-
-        self.send_ipi_32(ipi_high, ipi_low)
+        self.send_ipi_32(ipi_high, ipi_low);
     }
 
     #[inline]
@@ -219,9 +228,10 @@ pub fn init() {
     super::pic_init();
     let addr = apic_info.local_apic_address;
     debug!("Local APIC address: {:p}", addr as usize as *const ());
-    KERNEL_MEMORY_MANAGER
-        .lock()
-        .identity_map_writable_data_for_kernel(PhysAddr::new_truncate(addr));
+    KERNEL_MEMORY_MANAGER.lock().identity_map(
+        PhysFrame::containing_address(PhysAddr::new_truncate(addr)),
+        PageTableFlags::WRITABLE | PageTableFlags::NO_CACHE | PageTableFlags::PRESENT,
+    );
     let apic_ptr: *mut u8 = addr as *mut u8;
     unsafe {
         LOCAL_APIC.address = apic_ptr;
@@ -259,5 +269,6 @@ pub fn init() {
         LOCAL_APIC.set_local_vector_table_timer(32 | 0x20000);
         LOCAL_APIC.set_timer_divisor(0x03);
         LOCAL_APIC.set_timer_initial_count(0xFF00);
+        debug!("APIC setup complete.");
     }
 }

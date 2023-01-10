@@ -3,7 +3,7 @@
 use std::collections::HashMap;
 use std::env;
 use std::ffi::OsString;
-use std::fs::{self, DirEntry, FileType};
+use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
@@ -15,7 +15,8 @@ fn main() {
 }
 
 fn build_assembly() {
-    let base_path = Path::new(".")
+    let build_path = env::var("CARGO_MANIFEST_DIR").unwrap();
+    let base_path = Path::new(build_path.as_str())
         .canonicalize()
         .expect("Failed to cannoicalize .");
     let borrowed_base_path = &base_path;

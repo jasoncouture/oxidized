@@ -1,6 +1,5 @@
-use core::{fmt::Display, panic};
-
 use alloc::fmt::format;
+use core::{fmt::Display, panic};
 
 #[derive(Debug)]
 pub enum LogLevel {

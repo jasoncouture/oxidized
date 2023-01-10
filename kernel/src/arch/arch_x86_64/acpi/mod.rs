@@ -1,13 +1,12 @@
 use core::{cell::OnceCell, panic, ptr::NonNull};
 
-use acpi::{madt::MadtEntry, AcpiHandler, AcpiTables, InterruptModel};
-use alloc::{boxed::Box, vec::Vec};
-use x86_64::{PhysAddr, VirtAddr};
+use acpi::{AcpiHandler, AcpiTables};
+use x86_64::PhysAddr;
 
 use crate::{
     debug,
-    memory::{self, allocator::KERNEL_FRAME_ALLOCATOR, KERNEL_MEMORY_MANAGER},
-    warn, println,
+    memory::KERNEL_MEMORY_MANAGER,
+    warn,
 };
 
 #[derive(Clone, Copy)]
@@ -22,7 +21,6 @@ impl AcpiHandler for AcpiHandlerImpl {
         let memory_manager = KERNEL_MEMORY_MANAGER.lock();
         let mapped_address = memory_manager.translate(PhysAddr::new(physical_address as u64));
         let val = mapped_address.as_ptr() as *const T;
-        println!("Mapping {:p} for ACPI", val);
         let nonnull_val = NonNull::from(val.as_ref().unwrap());
         acpi::PhysicalMapping::new(physical_address, nonnull_val, size, size, *self)
     }

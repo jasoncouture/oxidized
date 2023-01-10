@@ -25,6 +25,7 @@ startup_ap:
     mov ds, ax
     mov es, ax
     mov ss, ax
+    mov ax, 1
     ; Load IDT
     lidt [idt]
     lgdt [gdtr]
@@ -66,7 +67,7 @@ startup_ap:
     ; 5: Page Address Extension
     ; 3: Debugging Extensions
     mov eax, cr4
-    or eax, 1 << 10 | 1 << 9 | 1 << 6 | 1 << 5 | 1 << 3
+    or eax, 1 << 10 | 1 << 9 | 1 << 6  | 1 << 5 | 1 << 3
     mov cr4, eax
 
     ; initialize floating point registers
@@ -80,6 +81,7 @@ startup_ap:
     rdmsr
     or eax, 1 << 11 | 1 << 14 | 1 << 8 
     wrmsr
+    xor ecx, ecx
     mov eax, 7
     mov [trampoline.booting], eax
     ; enabling paging and protection simultaneously
@@ -90,8 +92,8 @@ startup_ap:
     ; 4: Extension type
     ; 1: Monitor co-processor
     ; 0: Protected Mode
-    ; or eax, 1 << 31 | 1 << 16 | 1 << 5 | 1 << 4 | 1 << 1 | 1 << 0
-    or eax, 1 << 31 | 1 << 16 | 1 << 0
+    or eax, 1 << 31 | 1 << 16 | 1 << 5 | 1 << 4 | 1 << 1 | 1 << 0
+    ; or eax, 1 << 31 | 1 << 16 | 1 << 0
     mov cr0, eax
     lgdt [gdtr]
     jmp gdt.kernel_code:long_mode_ap
@@ -104,10 +106,15 @@ long_mode_ap:
     mov ds, rax
     mov es, rax
     mov ss, rax
-    mov rax, [trampoline.stack_end]
+    mov rax, 0x100
+    wbinvd
+    lock xchg [trampoline.booting], rax
+    wbinvd
+    mov rax, [trampoline.stack_start]
+    
     mov rsp, rax
     mov rbx, [trampoline.code]
-    jmp far qword [trampoline.code]
+    jmp [trampoline.code]
 halt_loop:
     cli
     hlt
@@ -119,8 +126,16 @@ gdt:
 .null equ $ - gdt
     dq 0
 .kernel_code equ $ - gdt
+    ; 53: Long mode
+    ; 47: Present
+    ; 44: Code/data segment
+    ; 43: Executable
+    ; 41: Readable code segment
     dq 0x00209A0000000000             ; 64-bit code descriptor (exec/read).
 .kernel_data equ $ - gdt
+    ; 47: Present
+    ; 44: Code/data segment
+    ; 41: Writable data segment
     dq 0x0000920000000000             ; 64-bit data descriptor (read/write).
 
 .end equ $ - gdt
@@ -138,3 +153,4 @@ early_stack:
 times 2048 db 0
 .end equ $
 times 256 db 0
+db trampoline.ready

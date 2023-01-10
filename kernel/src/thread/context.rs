@@ -1,6 +1,6 @@
-use core::{cmp::max, ops::Index, ptr::NonNull};
-
 use alloc::{boxed::Box, vec::Vec};
+use core::{cmp::max, ptr::NonNull};
+
 use lazy_static::*;
 use spin::{Mutex, RwLock};
 
@@ -21,7 +21,7 @@ pub struct Context {
     state: ContextState,
     block_mutex: Option<Mutex<()>>,
     lock: RwLock<()>,
-    cpu: usize
+    cpu: usize,
 }
 
 impl Context {
@@ -31,7 +31,7 @@ impl Context {
             state: ContextState::Initializing,
             block_mutex: None,
             lock: RwLock::new(()),
-            cpu: usize::MAX
+            cpu: usize::MAX,
         }
     }
 

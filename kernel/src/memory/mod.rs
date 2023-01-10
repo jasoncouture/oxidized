@@ -1,14 +1,15 @@
 use alloc::string::String;
+
 use bootloader_api::info::MemoryRegions;
 use lazy_static::lazy_static;
 use spin::Mutex;
 use x86_64::{
-    registers::control::Cr3,
-    structures::paging::{mapper::TranslateResult, *},
-    PhysAddr, VirtAddr,
+    instructions::tlb,
+    PhysAddr,
+    registers::control::Cr3, structures::paging::{*, mapper::TranslateResult}, VirtAddr,
 };
 
-use crate::{println, verbose};
+use crate::{debug, println, verbose};
 
 use self::allocator::{init_frame_allocator, init_kernel_heap, KERNEL_FRAME_ALLOCATOR, PAGE_SIZE};
 
@@ -24,13 +25,6 @@ impl MemoryManager {
     pub fn init(self: &mut Self, page_table: OffsetPageTable<'static>) {
         self.page_table = Some(page_table);
         self.physical_offset = self.page_table.as_ref().unwrap().phys_offset();
-    }
-
-    pub fn identity_map_writable_data_for_kernel(&mut self, physical_address: PhysAddr) {
-        self.identity_map(
-            physical_address,
-            PageTableFlags::PRESENT | PageTableFlags::WRITABLE | PageTableFlags::NO_EXECUTE,
-        );
     }
 
     // pub fn map_page(&mut self, physical_address: PhysAddr) {
@@ -81,7 +75,6 @@ impl MemoryManager {
             if (start_over) {
                 continue;
             }
-
             for page in Page::<Size4KiB>::range_inclusive(start_page, end_page) {
                 let frame = unsafe { KERNEL_FRAME_ALLOCATOR.allocate_frame() };
                 if frame.is_none() {
@@ -91,14 +84,20 @@ impl MemoryManager {
                 let result =
                     unsafe { page_table.map_to(page, frame, flags, &mut KERNEL_FRAME_ALLOCATOR) };
                 let result = result.expect("Failed to map virtual memory!");
-                result.flush();
+                if pages < 10 {
+                    result.flush();
+                } else {
+                    result.ignore();
+                }
+            }
+            if pages >= 10 {
+                tlb::flush_all();
             }
             return Some(start_page.start_address().as_mut_ptr());
         }
     }
 
-    pub fn identity_map(&mut self, address: PhysAddr, flags: PageTableFlags) {
-        let frame = PhysFrame::<Size4KiB>::containing_address(address);
+    pub fn identity_map(&mut self, frame: PhysFrame<Size4KiB>, flags: PageTableFlags) {
         unsafe {
             self.page_table
                 .as_mut()
@@ -131,10 +130,12 @@ unsafe fn get_active_page_table(base_address: VirtAddr) -> &'static mut PageTabl
     &mut *page_table_ptr
 }
 
+
+
 pub(crate) fn initialize_virtual_memory(
     base_address: VirtAddr,
     memory_map: &'static MemoryRegions,
-) -> *mut u8 {
+) {
     println!("Initializing memory manager");
     unsafe {
         {
@@ -147,25 +148,14 @@ pub(crate) fn initialize_virtual_memory(
         println!("Initializing frame allocator");
         // and boot up the frame allocator
         init_frame_allocator(memory_map);
-        println!("Getting SMP Trampoline frame");
-        let next_page = KERNEL_FRAME_ALLOCATOR.allocate_frame();
-        let pointer = match next_page {
-            Some(p) => p.start_address().as_u64() as *mut u8,
-            None => panic!("Could not allocate ipi trampoline frame!"),
-        };
-        println!("Identity mapping {:p} for SMP Trampoline", pointer);
-        {
-            let mut memory_manager = KERNEL_MEMORY_MANAGER.lock();
-            memory_manager.identity_map(
-                PhysAddr::new(pointer as u64),
-                PageTableFlags::NO_CACHE | PageTableFlags::PRESENT | PageTableFlags::WRITABLE,
-            );
-        }
         println!("Initializing heap");
         // And then the heap.
         init_kernel_heap().expect("Failed to initialize kernel heap");
-
+        debug!("Memory map");
+        debug!("Start - End - Kind");
+        for region in memory_map.iter() {
+            debug!("{:p} - {:p} - {:?}", region.start as *const u8, region.end as *const u8, region.kind);
+        }
         verbose!("Heap and virtual memory initialized.");
-        pointer
     }
 }

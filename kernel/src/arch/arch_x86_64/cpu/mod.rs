@@ -4,19 +4,19 @@ use x86_64::{
     instructions::interrupts::{self, are_enabled},
     software_interrupt,
     structures::paging::{PageTableFlags, PhysFrame},
-    PhysAddr,
+    PhysAddr, registers::segmentation::{SS, Segment},
 };
 
 use kernel_shared::memory::memcpy;
 
 use crate::{
-    arch::arch_x86_64::{cpu, timer::SPIN_TIMER},
+    arch::arch_x86_64::{cpu, timer::SPIN_TIMER, gdt::GdtInformation},
     debug, error,
     memory::{
         allocator::{KERNEL_FRAME_ALLOCATOR, PAGE_SIZE},
         KERNEL_MEMORY_MANAGER,
     },
-    warn,
+    warn, println,
 };
 
 use super::{acpi::ACPI_TABLES, apic::LOCAL_APIC};
@@ -92,12 +92,18 @@ impl InterProcessorInterruptPayload {
     }
 
     pub fn set_stack(&self, stack: *const u8, stack_length: usize) {
+        let stack_end = unsafe { stack.offset(stack_length as isize) };
+        if !stack.is_aligned_to(16) || !stack_end.is_aligned_to(16) {
+            panic!("Attempted to start a CPU with an unaligned stack! {:p}-{:p}", stack, stack_end);
+        }
         unsafe {
             debug!(
                 "IPI Trampoline: Stack: {:p}-{:p}",
                 stack,
                 stack.offset(stack_length as isize)
             );
+            self.set_value(STACK_START_OFFSET, stack as u64);
+            self.set_value(STACK_END_OFFSET, (stack as u64) + stack_length as u64);
             self.payload
                 .offset(STACK_START_OFFSET)
                 .write_volatile(stack as u64);
@@ -109,12 +115,33 @@ impl InterProcessorInterruptPayload {
 
     fn set_value(&self, index: isize, val: u64) {
         unsafe {
-            self.payload.offset(index + BASE_OFFSET).write_volatile(val);
+            
+            let target = self.payload.offset(index + BASE_OFFSET);
+            debug!("IPIT WRITE: {:p} ({:p}+{:02x}) = {:016x}", target, self.payload, index + BASE_OFFSET, val);
+            asm! (
+                "wbinvd",
+                "lock xchg [{}], {}",
+                "wbinvd",
+                in(reg) target,
+                in(reg) val
+            );
         }
     }
 
     fn get_value(&self, index: isize) -> u64 {
-        unsafe { self.payload.offset(index + BASE_OFFSET).read_volatile() }
+        unsafe { 
+            let target = self.payload.offset(index + BASE_OFFSET);
+            let mut val: u64 = 0;
+            asm! (
+                "wbinvd",
+                "lock xadd [{}], {}",
+                "wbinvd",
+                in(reg) target,
+                inout(reg) val
+            );
+            debug!("IPIT READ : {:p} {:p}+{:02x} -> {:016x}", target, self.payload, index + BASE_OFFSET, val);
+            val
+        }
     }
 
     pub fn set_cpu_id(&self, cpu_id: u64) {
@@ -156,6 +183,10 @@ impl InterProcessorInterruptPayload {
         self.get_value(READY_OFFSET) != 0
     }
 
+    pub fn notify_ready(&self) {
+        self.set_value(READY_OFFSET, u64::MAX);
+    }
+
     pub fn boot(&self) {
         core::hint::black_box(self);
         let segment = self.get_code_segment() as u8;
@@ -165,7 +196,6 @@ impl InterProcessorInterruptPayload {
             self.as_ptr()
         );
         let cpu_id = self.get_cpu_id();
-        self.set_base_offset();
         unsafe {
             core::hint::black_box(LOCAL_APIC);
             for i in 0..2 {
@@ -176,7 +206,7 @@ impl InterProcessorInterruptPayload {
                 self.clear_booting_flag();
                 LOCAL_APIC.send_ipi_init(cpu_id);
                 debug!("INIT-IPI Sent");
-                SPIN_TIMER.millis(10);
+                
                 for x in 0..2 {
                     if self.is_ready() {
                         break;
@@ -239,7 +269,7 @@ impl InterProcessorInterruptPayload {
 }
 
 pub extern "C" fn cpu_apic_id() -> u8 {
-    let mut acpi_id: u32;
+    let mut acpi_id: u8;
     unsafe {
         asm!(
         "
@@ -251,7 +281,7 @@ pub extern "C" fn cpu_apic_id() -> u8 {
          shr eax, 24;
          pop rbx;
          ", 
-            out("eax") acpi_id
+            out("al") acpi_id
         );
     }
     return acpi_id as u8;
@@ -266,10 +296,10 @@ pub fn start_additional_cpus() {
     let frame_start_pointer = frame.start_address().as_u64() as usize as *mut u8;
     KERNEL_MEMORY_MANAGER.lock().identity_map(
         frame,
-        PageTableFlags::WRITABLE | PageTableFlags::NO_CACHE | PageTableFlags::PRESENT,
+        PageTableFlags::WRITABLE | PageTableFlags::PRESENT,
     );
     debug!(
-        "Identity mapping {:p}, so we don't confuse IPI when it loads the page tables",
+        "Identity mapped {:p}, so we don't confuse IPI when it loads the page tables",
         frame_start_pointer
     );
     let ipi_payload = InterProcessorInterruptPayload::new(frame_start_pointer);
@@ -278,8 +308,6 @@ pub fn start_additional_cpus() {
     unsafe {
         let platform_info = ACPI_TABLES.get().unwrap().platform_info().unwrap();
         let processor_info = platform_info.processor_info.unwrap();
-
-        setup_trampoline_common_parameters(&ipi_payload);
 
         for app_cpu in processor_info.application_processors.iter() {
             debug!("Attempting to start CPU {}", app_cpu.local_apic_id);
@@ -350,27 +378,32 @@ pub fn setup_trampoline(cpu_id: usize, ipi_payload: &InterProcessorInterruptPayl
     let stack_length = CPU_STACK_PAGES * PAGE_SIZE;
     let stack = create_ap_stack(stack_length);
     ipi_payload.set_stack(stack, stack_length);
+    setup_trampoline_common_parameters(&ipi_payload);
     debug!("CPU Bootstrap trampoline prepared.");
 }
 
-pub extern "C" fn ap_entry(cpu_id: usize, notify_addr: *mut u64) -> ! {
-    if !interrupts::are_enabled() {
-        interrupts::enable();
-    }
-    unsafe { notify_addr.write_volatile(1) };
-    crate::arch::arch_x86_64::gdt::init(cpu_id);
+pub unsafe extern "C" fn ap_entry() -> ! {
+    let ipi = InterProcessorInterruptPayload::new(0 as *mut u8);
+    ipi.notify_ready();
+    println!("Allocating a new GDT for this CPU");
+    let gdt_pointer = crate::arch::arch_x86_64::gdt::allocate_gdt();
+    let gdt_info = gdt_pointer.as_ref::<GdtInformation>();
+    println!("Initializing GDT");
+    gdt_info.init();
+    println!("Loading IDT");
     crate::arch::arch_x86_64::idt::init();
-
-    unsafe {
-        asm!("mov rdx, 0xDEADBEEF", "int 254");
-    }
-    debug!("AP {} ONLINE!", cpu_id);
+    interrupts::enable();
+    println!("Interrupts enabled");
     let local_apic_id = cpu_apic_id();
-    debug!("APIC ID: {}", local_apic_id);
-    debug!("APIC reported ID: {}", unsafe { LOCAL_APIC.get_apic_id() });
-
-    debug!("Enabling interrupts and spinning with hlt");
+    debug!("AP {} ONLINE! Sending context-switch interrupt now.", local_apic_id);
+    software_interrupt!(254);
+    debug!("Entering idle spin loop");
     loop {
         x86_64::instructions::interrupts::enable_and_hlt();
     }
+}
+
+
+pub fn current() -> u8 {
+    cpu_apic_id()
 }

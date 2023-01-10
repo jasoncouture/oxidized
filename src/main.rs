@@ -29,10 +29,13 @@ fn create_command(image_path: &str, uefi: bool) -> Command {
         .arg("-serial")
         .arg("stdio")
         .arg("-m")
-        .arg("size=4096")
-        .arg("-no-reboot")
+        .arg("size=1024")
         .arg("-smp")
-        .arg("cpus=4");
-
+        .arg("cpus=2")
+        .arg("-d")
+        .arg("cpu_reset")
+        .arg("-accel")
+        .arg("tcg");
+    
     return cmd;
 }

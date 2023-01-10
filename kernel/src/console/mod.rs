@@ -1,9 +1,10 @@
+use alloc::string::ToString;
 use core::fmt;
 
-use crate::framebuffer::*;
-use alloc::string::ToString;
 use lazy_static::*;
 use spin::Mutex;
+
+use crate::framebuffer::*;
 
 #[derive(Clone, Copy, Debug)]
 #[repr(C)]
@@ -23,13 +24,14 @@ lazy_static! {
 }
 
 pub(crate) fn _print(args: fmt::Arguments) {
+    let locked_console = CONSOLE.lock();
     for c in args.to_string().chars() {
         if !c.is_ascii() {
             continue;
         }
         match c {
-            '\n' => CONSOLE.lock().new_line(),
-            _ => CONSOLE.lock().put_char(c)
+            '\n' => locked_console.new_line(),
+            _ => locked_console.put_char(c)
         };
     }
 }
