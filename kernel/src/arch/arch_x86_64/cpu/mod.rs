@@ -35,18 +35,17 @@ static BOOTSTRAP_CODE: &[u8] = include_bytes!(concat!(
 trampoline:
     jmp short startup_ap
     times 8 - ($ - trampoline) nop
-    .ready: dq 0
-    .cpu_id: dq 0
-    .page_table: dq 0
-    .stack_start: dq 0
-    .stack_end: dq 0
-    .code: dq 0
-    .base: dq 0
+    .ready: dq 0 ;0
+    .cpu_id: dq 0 ;1
+    .page_table: dq 0 ;2
+    .stack_start: dq 0 ;3
+    .stack_end: dq 0 ;4 
+    .code: dq 0 ;5
+    .booting: dq 0 ;6
 */
 const BASE_OFFSET: isize = 1;
 const CPU_ID_OFFSET: isize = 1;
 const PAGE_TABLE_OFFSET: isize = 2;
-const STACK_START_OFFSET: isize = 3;
 const STACK_END_OFFSET: isize = 4;
 const ENTRY_ADDRESS_OFFSET: isize = 5;
 const BASE_OFFSET_OFFSET: isize = 6;
@@ -89,14 +88,7 @@ impl InterProcessorInterruptPayload {
             );
         }
         unsafe {
-            self.set_value(STACK_START_OFFSET, stack as u64);
             self.set_value(STACK_END_OFFSET, (stack as u64) + stack_length as u64);
-            self.payload
-                .offset(STACK_START_OFFSET)
-                .write_volatile(stack as u64);
-            self.payload
-                .offset(STACK_END_OFFSET)
-                .write_volatile((stack as u64) + stack_length as u64);
         }
     }
 
@@ -220,7 +212,6 @@ impl InterProcessorInterruptPayload {
         if !self.is_ready() {
             panic!("CPU BOOT FAILED FOR CPU: {}", self.get_cpu_id());
         }
-        self.wait_for_cpu_online();
     }
 
     fn wait_for_cpu_online(&self) {

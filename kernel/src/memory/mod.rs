@@ -45,11 +45,6 @@ impl MemoryManager {
         let page_table = self.page_table.as_mut().unwrap();
         loop {
             let end_page = start_page + pages as u64;
-            println!(
-                "Processing page range: {:#016X} to {:#016X}",
-                start_page.start_address().as_u64(),
-                end_page.start_address().as_u64()
-            );
             let mut start_over = false;
             for page in Page::<Size4KiB>::range_inclusive(start_page, end_page) {
                 if let Ok(_) = page_table.translate_page(page) {
@@ -57,11 +52,6 @@ impl MemoryManager {
                     if start_page == page {
                         self.next_free_page = next_start;
                     }
-                    println!(
-                        "Page range conflicts with {}, starting at next page: {}",
-                        page.start_address().as_u64(),
-                        next_start.as_u64()
-                    );
                     start_page = Page::containing_address(next_start);
                     start_over = true;
                     break;

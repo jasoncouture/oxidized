@@ -164,7 +164,6 @@ impl AdvancedProgrammableInterruptController {
         // Assert INIT
         let icr_value = (cpu_id as u64) << 56 | 0x4500;
         self.send_ipi(icr_value);
-        self.wait_for_ipi_delivery();
     }
 
     #[inline]
@@ -173,12 +172,10 @@ impl AdvancedProgrammableInterruptController {
         // SIPI
         let icr_value = (cpu_id as u64) << 56 | 0x4600 | (segment as u64);
         self.send_ipi(icr_value);
-        self.wait_for_ipi_delivery();
     }
 
     #[inline]
     pub fn send_ipi_32(self, ipi_high: u32, ipi_low: u32) {
-        debug!("IPI: {:08x} {:08x}", ipi_high, ipi_low);
         self.set_ipi_high(ipi_high);
         self.set_ipi_low(ipi_low);
         self.wait_for_ipi_delivery();

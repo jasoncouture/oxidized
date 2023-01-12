@@ -110,7 +110,7 @@ long_mode_ap:
     wbinvd
     lock xchg [trampoline.booting], rax
     wbinvd
-    mov rax, [trampoline.stack_start]
+    mov rax, [trampoline.stack_end]
     
     mov rsp, rax
     mov rbx, [trampoline.code]
