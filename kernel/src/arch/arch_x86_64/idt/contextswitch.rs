@@ -9,7 +9,7 @@ pub(crate) extern "x86-interrupt" fn context_switch(_state: InterruptStackFrame)
 }
 
 #[no_mangle]
-unsafe extern "C" fn fork(state: *mut u8) {
+unsafe extern "C" fn fork(_state: *mut u8) {
     // TODO
 }
 

@@ -1,12 +1,8 @@
-use alloc::string::String;
-
 use bootloader_api::info::MemoryRegions;
 use lazy_static::lazy_static;
 use spin::Mutex;
 use x86_64::{
-    instructions::tlb,
-    PhysAddr,
-    registers::control::Cr3, structures::paging::{*, mapper::TranslateResult}, VirtAddr,
+    instructions::tlb, registers::control::Cr3, structures::paging::*, PhysAddr, VirtAddr,
 };
 
 use crate::{debug, println, verbose};
@@ -28,7 +24,7 @@ impl MemoryManager {
     }
 
     // pub fn map_page(&mut self, physical_address: PhysAddr) {
-        
+
     // }
 
     pub fn allocate_contigious_address_range(
@@ -72,7 +68,7 @@ impl MemoryManager {
                 }
             }
 
-            if (start_over) {
+            if start_over {
                 continue;
             }
             for page in Page::<Size4KiB>::range_inclusive(start_page, end_page) {
@@ -130,8 +126,6 @@ unsafe fn get_active_page_table(base_address: VirtAddr) -> &'static mut PageTabl
     &mut *page_table_ptr
 }
 
-
-
 pub(crate) fn initialize_virtual_memory(
     base_address: VirtAddr,
     memory_map: &'static MemoryRegions,
@@ -154,7 +148,10 @@ pub(crate) fn initialize_virtual_memory(
         debug!("Memory map");
         debug!("Start - End - Kind");
         for region in memory_map.iter() {
-            debug!("{:p} - {:p} - {:?}", region.start as *const u8, region.end as *const u8, region.kind);
+            debug!(
+                "{:p} - {:p} - {:?}",
+                region.start as *const u8, region.end as *const u8, region.kind
+            );
         }
         verbose!("Heap and virtual memory initialized.");
     }

@@ -20,12 +20,13 @@ fn main() {
 
 fn create_command(image_path: &str, uefi: bool) -> Command {
     let mut cmd = std::process::Command::new("qemu-system-x86_64");
-    
+
     if uefi {
         cmd.arg("-bios").arg(ovmf_prebuilt::ovmf_pure_efi());
     }
 
-    cmd.arg("-drive").arg(format!("format=raw,file={image_path}"))
+    cmd.arg("-drive")
+        .arg(format!("format=raw,file={image_path}"))
         .arg("-serial")
         .arg("stdio")
         .arg("-m")
@@ -36,6 +37,6 @@ fn create_command(image_path: &str, uefi: bool) -> Command {
         .arg("cpu_reset")
         .arg("-accel")
         .arg("tcg");
-    
+
     return cmd;
 }

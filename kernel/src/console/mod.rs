@@ -31,7 +31,7 @@ pub(crate) fn _print(args: fmt::Arguments) {
         }
         match c {
             '\n' => locked_console.new_line(),
-            _ => locked_console.put_char(c)
+            _ => locked_console.put_char(c),
         };
     }
 }
@@ -46,7 +46,6 @@ macro_rules! console_println {
     () => ($crate::console_print!("\n"));
     ($($arg:tt)*) => ($crate::console_print!("{}\n", format_args!($($arg)*)));
 }
-
 
 impl Console {
     pub fn new_line(self: &Self) {
@@ -64,12 +63,16 @@ impl Console {
         let mut x_offset: usize = unsafe { CONSOLE_X_POSITION };
         let locked = FRAME_BUFFER.lock();
         let frame_buffer_option = locked.get_framebuffer();
-        if frame_buffer_option.is_none() { return; }
+        if frame_buffer_option.is_none() {
+            return;
+        }
         let frame_buffer = frame_buffer_option.unwrap();
         let platform_framebuffer_option = frame_buffer.frame_buffer.as_ref();
-        if platform_framebuffer_option.is_none() { return; }
+        if platform_framebuffer_option.is_none() {
+            return;
+        }
         let platform_framebuffer = platform_framebuffer_option.unwrap();
-        
+
         let info = platform_framebuffer.info();
         let y_offset = info.height - glyph.height();
 
@@ -160,9 +163,7 @@ impl Font {
                 bytes: glyph_bytes,
             };
         }
-        Font {
-            glyphs: glyphs,
-        }
+        Font { glyphs: glyphs }
     }
 
     pub fn glyph(self: &Self, c: u8) -> Glyph {

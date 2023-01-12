@@ -1,4 +1,4 @@
-use core::{fmt::Display};
+use core::fmt::Display;
 
 #[derive(Debug)]
 pub enum LogLevel {
@@ -7,7 +7,7 @@ pub enum LogLevel {
     INFO,
     WARNING,
     ERROR,
-    FATAL
+    FATAL,
 }
 pub(crate) fn _print(log_level: LogLevel, args: core::fmt::Arguments) {
     let cpu = super::arch::get_current_cpu();
@@ -23,11 +23,10 @@ impl Display for LogLevel {
             LogLevel::INFO => write!(f, "INFO   "),
             LogLevel::WARNING => write!(f, "WARNING"),
             LogLevel::ERROR => write!(f, "ERROR  "),
-            LogLevel::FATAL => write!(f, "FATAL  ")
+            LogLevel::FATAL => write!(f, "FATAL  "),
         }
     }
 }
-
 
 #[macro_export]
 macro_rules! debug {

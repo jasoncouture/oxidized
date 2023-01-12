@@ -3,11 +3,7 @@ use core::{cell::OnceCell, panic, ptr::NonNull};
 use acpi::{AcpiHandler, AcpiTables};
 use x86_64::PhysAddr;
 
-use crate::{
-    debug,
-    memory::KERNEL_MEMORY_MANAGER,
-    warn,
-};
+use crate::{debug, memory::KERNEL_MEMORY_MANAGER, warn};
 
 #[derive(Clone, Copy)]
 pub struct AcpiHandlerImpl {}

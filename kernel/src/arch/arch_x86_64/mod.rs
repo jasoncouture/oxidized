@@ -1,4 +1,4 @@
-use alloc::{collections::BTreeMap, string::{String, ToString}};
+use alloc::string::{String, ToString};
 
 use bootloader_api::BootInfo;
 use lazy_static::lazy_static;
@@ -6,23 +6,22 @@ use pic8259::ChainedPics;
 use x86::cpuid::CpuId;
 use x86_64::instructions::interrupts;
 
-use crate::{arch::arch_x86_64::{acpi::ACPI_TABLES, apic::LOCAL_APIC, cpu::start_additional_cpus}, debug, memory::allocator::KERNEL_FRAME_ALLOCATOR};
+use crate::{arch::arch_x86_64::cpu::start_additional_cpus, debug};
 
 use self::cpu::cpu_apic_id;
 
-pub(crate) mod gdt;
-pub(crate) mod idt;
-pub(crate) mod syscall;
 pub(crate) mod acpi;
 pub(crate) mod apic;
 pub(crate) mod cpu;
+pub(crate) mod gdt;
+pub(crate) mod idt;
+pub(crate) mod syscall;
 pub(crate) mod timer;
 
 pub const PIC_1_OFFSET: u8 = 32;
 pub const PIC_2_OFFSET: u8 = PIC_1_OFFSET + 8;
 
-pub fn init_common() {
-}
+pub fn init_common() {}
 
 pub fn init_hardware(boot_info: &BootInfo) {
     debug!("Initializing GDT");
@@ -74,7 +73,6 @@ pub fn get_cpu_brand_string() -> String {
     );
     processor_brand_struct.as_str().to_string()
 }
-
 
 pub fn enable_interrupts_hardware() {
     interrupts::enable();

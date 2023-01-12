@@ -75,7 +75,10 @@ fn build_assembly_file(file: &Path, base_path: &PathBuf) -> PathBuf {
         println!("Ensuring path exists: {}", p.to_str().unwrap());
         let result = fs::create_dir_all(p);
         if result.is_err() {
-            panic!("Failed to create base path for output: {}", p.to_str().unwrap())
+            panic!(
+                "Failed to create base path for output: {}",
+                p.to_str().unwrap()
+            )
         }
     };
 

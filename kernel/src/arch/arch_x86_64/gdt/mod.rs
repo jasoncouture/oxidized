@@ -2,17 +2,15 @@ use core::alloc::Layout;
 use lazy_static::lazy_static;
 use spin::Mutex;
 use x86_64::instructions::tables::load_tss;
-use x86_64::registers::segmentation::{Segment, SS, FS, GS};
+use x86_64::registers::segmentation::{Segment, FS, GS};
 use x86_64::structures::gdt::{
     Descriptor, DescriptorFlags, GlobalDescriptorTable, SegmentSelector,
 };
-use x86_64::structures::paging::page_table::PageTableLevel;
-use x86_64::structures::paging::{FrameAllocator, PageTableFlags};
+
 use x86_64::structures::tss::TaskStateSegment;
 use x86_64::VirtAddr;
 
-use crate::memory::allocator::{kmalloc, KERNEL_FRAME_ALLOCATOR, PAGE_SIZE};
-use crate::memory::KERNEL_MEMORY_MANAGER;
+use crate::memory::allocator::{kmalloc, PAGE_SIZE};
 
 pub const INTERRUPT_STACK_SIZE_PAGES: usize = 1;
 pub const INTERRUPT_STACK_SIZE: usize = PAGE_SIZE * INTERRUPT_STACK_SIZE_PAGES;

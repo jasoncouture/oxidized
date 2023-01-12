@@ -1,22 +1,20 @@
 use core::{
-    arch::asm,
     panic,
-    ptr::{read_volatile, write_volatile}
+    ptr::{read_volatile, write_volatile},
 };
 
 use lazy_static::*;
 use spin::{self, Mutex};
-use volatile::Volatile;
+
 use x86_64::{
     set_general_handler,
     structures::idt::{InterruptDescriptorTable, InterruptStackFrame, PageFaultErrorCode},
-    VirtAddr,
 };
 
 use crate::{
     arch::arch_x86_64::{
-        gdt::{CONTEXT_SWITCH_IST_INDEX, DOUBLE_FAULT_IST_INDEX},
         cpu,
+        gdt::{CONTEXT_SWITCH_IST_INDEX, DOUBLE_FAULT_IST_INDEX},
     },
     debug, println, warn,
 };
@@ -47,13 +45,12 @@ impl InterruptHandlers {
         println!("EXCEPTION: BREAKPOINT\n{:#?}", stack_frame);
     }
 
-    extern "x86-interrupt" fn double_fault(
-        stack_frame: InterruptStackFrame,
-        error_code: u64,
-    ) -> ! {
+    extern "x86-interrupt" fn double_fault(stack_frame: InterruptStackFrame, error_code: u64) -> ! {
         panic!(
             "EXCEPTION: DOUBLE FAULT on CPU {}: {}\n{:#?}",
-            cpu::current(), error_code, stack_frame
+            cpu::current(),
+            error_code,
+            stack_frame
         );
     }
 
@@ -70,65 +67,80 @@ impl InterruptHandlers {
             virtual_address
         );
     }
-    extern "x86-interrupt" fn alignment_check(stack_frame: InterruptStackFrame, error_code: u64) {
+    extern "x86-interrupt" fn alignment_check(_stack_frame: InterruptStackFrame, error_code: u64) {
         panic!("ALIGNMENT CHECK {}", error_code);
     }
-    extern "x86-interrupt" fn bound_range_exceeded(stack_frame: InterruptStackFrame) {
+    extern "x86-interrupt" fn bound_range_exceeded(_stack_frame: InterruptStackFrame) {
         panic!("BOUND RANGE EXCEEDED");
     }
-    extern "x86-interrupt" fn invalid_opcode(stack_frame: InterruptStackFrame) {
+    extern "x86-interrupt" fn invalid_opcode(_stack_frame: InterruptStackFrame) {
         panic!("INVALID OPCODE");
     }
-    extern "x86-interrupt" fn invalid_tss(stack_frame: InterruptStackFrame, error_code: u64) {
+    extern "x86-interrupt" fn invalid_tss(_stack_frame: InterruptStackFrame, error_code: u64) {
         panic!("INVALID TSS {}", error_code);
     }
 
-    extern "x86-interrupt" fn general_protection_fault(stack_frame: InterruptStackFrame, error_code: u64) {
+    extern "x86-interrupt" fn general_protection_fault(
+        _stack_frame: InterruptStackFrame,
+        error_code: u64,
+    ) {
         panic!("GENERAL PROTECTION FAULT {}", error_code);
     }
 
-    extern "x86-interrupt" fn debug(stack_frame: InterruptStackFrame) {
+    extern "x86-interrupt" fn debug(_stack_frame: InterruptStackFrame) {
         panic!("DEBUG");
     }
 
-    extern "x86-interrupt" fn device_not_available(stack_frame: InterruptStackFrame) {
+    extern "x86-interrupt" fn device_not_available(_stack_frame: InterruptStackFrame) {
         panic!("DEVICE NOT AVAILABLE");
     }
 
-    extern "x86-interrupt" fn divide_error(stack_frame: InterruptStackFrame) {
+    extern "x86-interrupt" fn divide_error(_stack_frame: InterruptStackFrame) {
         panic!("DIVIDE ERROR");
     }
 
-    extern "x86-interrupt" fn machine_check(stack_frame: InterruptStackFrame) -> ! {
+    extern "x86-interrupt" fn machine_check(_stack_frame: InterruptStackFrame) -> ! {
         panic!("MACHINE CHECK");
     }
 
-    extern "x86-interrupt" fn non_maskable_interrupt(stack_frame: InterruptStackFrame) {
+    extern "x86-interrupt" fn non_maskable_interrupt(_stack_frame: InterruptStackFrame) {
         panic!("NMI");
     }
 
-    extern "x86-interrupt" fn overflow(stack_frame: InterruptStackFrame) {
+    extern "x86-interrupt" fn overflow(_stack_frame: InterruptStackFrame) {
         panic!("OVERFLOW");
     }
-    extern "x86-interrupt" fn security_exception(stack_frame: InterruptStackFrame, error_code: u64) {
+    extern "x86-interrupt" fn security_exception(
+        _stack_frame: InterruptStackFrame,
+        error_code: u64,
+    ) {
         panic!("SECURITY EXCEPTION {}", error_code);
     }
-    extern "x86-interrupt" fn segment_not_present(stack_frame: InterruptStackFrame, error_code: u64) {
+    extern "x86-interrupt" fn segment_not_present(
+        _stack_frame: InterruptStackFrame,
+        error_code: u64,
+    ) {
         panic!("SEGMENT NOT PRESENT {}", error_code);
     }
-    extern "x86-interrupt" fn simd_floating_point(stack_frame: InterruptStackFrame) {
+    extern "x86-interrupt" fn simd_floating_point(_stack_frame: InterruptStackFrame) {
         panic!("SIMD FLOATING POINT");
     }
-    extern "x86-interrupt" fn stack_segment_fault(stack_frame: InterruptStackFrame, error_code: u64) {
+    extern "x86-interrupt" fn stack_segment_fault(
+        _stack_frame: InterruptStackFrame,
+        _error_code: u64,
+    ) {
         panic!("STACK SEGMENT FAULT");
     }
-    extern "x86-interrupt" fn virtualization(stack_frame: InterruptStackFrame) {
+    extern "x86-interrupt" fn virtualization(_stack_frame: InterruptStackFrame) {
         panic!("VIRTUALIZATION");
     }
-    extern "x86-interrupt" fn vmm_communication_exception(stack_frame: InterruptStackFrame, error_code: u64) {
+    extern "x86-interrupt" fn vmm_communication_exception(
+        _stack_frame: InterruptStackFrame,
+        _error_code: u64,
+    ) {
         panic!("VMM COMMUNICATION EXCEPTION");
     }
-    extern "x86-interrupt" fn x87_floating_point(stack_frame: InterruptStackFrame) {
+    extern "x86-interrupt" fn x87_floating_point(_stack_frame: InterruptStackFrame) {
         panic!("X87 FLOATING POINT");
     }
 }
@@ -177,7 +189,11 @@ pub fn init() {
     IDT.load();
 }
 
-fn apic_timer_interrupt_handler(frame: InterruptStackFrame, vector: u8, _error_code: Option<u64>) {
+fn apic_timer_interrupt_handler(
+    _frame: InterruptStackFrame,
+    _vector: u8,
+    _error_code: Option<u64>,
+) {
     unsafe {
         let ticks = read_volatile(&TICKS);
         write_volatile(&mut TICKS, ticks + 1);
@@ -186,8 +202,8 @@ fn apic_timer_interrupt_handler(frame: InterruptStackFrame, vector: u8, _error_c
 }
 
 fn apic_spurious_interrupt_handler(
-    frame: InterruptStackFrame,
-    vector: u8,
+    _frame: InterruptStackFrame,
+    _vector: u8,
     _error_code: Option<u64>,
 ) {
     debug!("Spurious interrupt!!");
@@ -206,7 +222,7 @@ type SoftwareInterruptHandler = fn(InterruptStackFrame, u8, Option<u64>);
 fn legacy_syscall_interrupt_handler(
     stack_frame: InterruptStackFrame,
     index: u8,
-    error_code: Option<u64>,
+    _error_code: Option<u64>,
 ) {
     debug!(
         "Legacy syscall via interrupt ISR: {:#02x}, from RIP: {:#016x}",
@@ -217,7 +233,6 @@ lazy_static! {
     static ref SOFTWARE_HANDLERS: Mutex<[Option<SoftwareInterruptHandler>; 224]> =
         Mutex::new([None; 224]);
 }
-
 
 pub fn clear_interrupt_handler(interrupt: u8) {
     set_interrupt_handler(interrupt, None);

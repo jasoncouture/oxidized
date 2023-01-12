@@ -12,28 +12,23 @@
 #![feature(pointer_byte_offsets)]
 #![feature(core_intrinsics)]
 #![feature(pointer_is_aligned)]
-//#[cfg_attr(target_arch = "x86_64")]
-#![test_runner(crate::test_runner::test_runner)]
-#![reexport_test_harness_main = "test_main"]
 extern crate alloc;
 
-use core::arch::asm;
 use core::ptr::NonNull;
 
 use bootloader_api::{config::Mapping, info::MemoryRegionKind, BootInfo};
-use x86_64::{software_interrupt, VirtAddr};
+use x86_64::VirtAddr;
 
 use framebuffer::*;
-use memory::{allocator::{KERNEL_FRAME_ALLOCATOR, KERNEL_HEAP_START, PAGE_SIZE}, *};
-use thread::process::{process_manager, ProcessDescriptor, ProcessManager};
+use memory::{
+    allocator::{KERNEL_FRAME_ALLOCATOR, KERNEL_HEAP_START, PAGE_SIZE},
+    *,
+};
+use thread::process::process_manager;
 
-use crate::{
-    arch::{
-        arch_x86_64::{get_cpu_brand_string, get_cpu_vendor_string},
-        enable_interrupts, get_current_cpu, get_timer_ticks, wait_for_interrupt,
-    },
-    serial::SERIAL1,
-    thread::context::CONTEXTS,
+use crate::arch::{
+    arch_x86_64::{get_cpu_brand_string, get_cpu_vendor_string},
+    enable_interrupts, get_current_cpu, wait_for_interrupt,
 };
 
 include!(concat!(env!("OUT_DIR"), "/metadata_constants.rs"));
@@ -46,9 +41,7 @@ mod loader;
 mod memory;
 mod panic;
 pub(crate) mod serial;
-mod test_runner;
 pub mod thread;
-mod unit_tests;
 
 const CONFIG: bootloader_api::BootloaderConfig = {
     let mut config = bootloader_api::BootloaderConfig::new_default();
@@ -144,7 +137,6 @@ fn kernel_main() {
     // }
     // debug!("Execution resumed after context switch!");
     loop {
-        
         // let ticks = get_timer_ticks();
         // debug!("Tick: {}", ticks);
         wait_for_interrupt();

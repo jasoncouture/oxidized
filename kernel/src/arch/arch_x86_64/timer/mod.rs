@@ -2,9 +2,9 @@ use core::{arch::asm, fmt::Debug, fmt::Display};
 
 use bitvec::macros::internal::funty::Numeric;
 use lazy_static::lazy_static;
-use x86_64::instructions::port::{Port, PortReadOnly, PortWriteOnly};
+use x86_64::instructions::port::{Port, PortWriteOnly};
 
-use crate::{arch::get_timer_ticks, debug, warn};
+use crate::debug;
 
 const CMOS_FLAGS_REGISTER: u8 = 0x0A;
 const CMOS_SECONDS_REGISTER: u8 = 0x00;
@@ -21,7 +21,7 @@ pub(crate) struct TscSpinTimer {
 
 impl TscSpinTimer {
     pub fn new() -> Self {
-        if let Some(fast_cal)= fast_calibrate_with_pit() {
+        if let Some(fast_cal) = fast_calibrate_with_pit() {
             debug!("Fast calibration sucessful, TSC frequency: {}", fast_cal);
             // KHZ, so convert to MHZ, since we want microsecond timer resolution (Approximately anyway)
             Self::unsafe_new(fast_cal / 1000);
@@ -160,7 +160,6 @@ fn wait_for_msb(port: &mut Port<u8>, expected: u8) -> (bool, u64, u64) {
     return (count > 5, tsc, delta);
 }
 
-
 fn fast_calibrate_with_pit() -> Option<u64> {
     let mut control_port = Port::new(NMI_AND_STATUS_CONTROL_REGISTER);
     let mut pit_channel_2_port = Port::new(PIT_CHANNEL_2);
@@ -192,7 +191,9 @@ fn fast_calibrate_with_pit() -> Option<u64> {
                 let (result, looptsc, delta2) =
                     wait_for_msb(&mut pit_channel_2_port, 0xffu8.wrapping_sub(1 + i));
                 if !result {
-                    debug!("PIT fast calibration failed: unable to compute accurate tsc per PIT tick");
+                    debug!(
+                        "PIT fast calibration failed: unable to compute accurate tsc per PIT tick"
+                    );
                     return None;
                 }
 

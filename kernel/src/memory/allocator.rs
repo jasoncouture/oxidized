@@ -1,15 +1,14 @@
-use core::{alloc::{GlobalAlloc, Layout}, intrinsics::caller_location};
+use core::alloc::{GlobalAlloc, Layout};
 
 use bitvec::prelude::*;
 use bootloader_api::info::{MemoryRegionKind, MemoryRegions};
-use futures_util::lock;
+
 use linked_list_allocator::LockedHeap;
 use x86_64::{
-    PhysAddr,
     structures::paging::{
-        FrameAllocator, Mapper, mapper::MapToError, Page, PageSize, PageTableFlags, PhysFrame,
-        Size4KiB,
-    }, VirtAddr,
+        mapper::MapToError, FrameAllocator, PageSize, PageTableFlags, PhysFrame, Size4KiB,
+    },
+    PhysAddr, VirtAddr,
 };
 
 use crate::{debug, println};
@@ -221,7 +220,12 @@ impl BootInfoFrameAllocator {
 
     pub fn force_allocate(&mut self, frame: PhysFrame) -> Option<PhysFrame> {
         let page = Self::get_page(frame.start_address().as_u64() as usize);
-        if self.used_pages.get(page).expect("Attempted to force allocate an address above supported address range!") == true {
+        if self
+            .used_pages
+            .get(page)
+            .expect("Attempted to force allocate an address above supported address range!")
+            == true
+        {
             panic!("Attempted to force allocate a used page!");
         }
 
@@ -290,5 +294,4 @@ pub fn kmalloc(layout: Layout) -> *mut u8 {
 
 pub fn kfree(ptr: *mut u8, layout: Layout) {
     unsafe { ALLOCATOR.dealloc(ptr, layout) }
-
 }

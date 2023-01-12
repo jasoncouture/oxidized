@@ -1,16 +1,10 @@
-use core::{
-    arch::{asm, x86_64::CpuidResult},
-    cell::OnceCell,
-};
+use core::{arch::asm, cell::OnceCell};
 
 use bitvec::array::BitArray;
 use bitvec::prelude::*;
-use lazy_static::lazy_static;
+
 use spin::Mutex;
 use x86_64::{
-    instructions::interrupts::{self, are_enabled},
-    registers::segmentation::{Segment, SS},
-    software_interrupt,
     structures::paging::{PageTableFlags, PhysFrame},
     PhysAddr,
 };
@@ -18,13 +12,13 @@ use x86_64::{
 use kernel_shared::memory::memcpy;
 
 use crate::{
-    arch::arch_x86_64::{cpu, gdt::GdtInformation, timer::SPIN_TIMER},
-    debug, error,
+    arch::arch_x86_64::{gdt::GdtInformation, timer::SPIN_TIMER},
+    debug,
     memory::{
         allocator::{KERNEL_FRAME_ALLOCATOR, PAGE_SIZE},
         KERNEL_MEMORY_MANAGER,
     },
-    println, warn,
+    warn,
 };
 
 use super::{acpi::ACPI_TABLES, apic::LOCAL_APIC};
@@ -263,7 +257,7 @@ impl InterProcessorInterruptPayload {
                     while !self.is_ready() {
                         core::hint::spin_loop();
                         let current_state = self.boot_diag();
-                        if (current_state == boot_state) {
+                        if current_state == boot_state {
                             continue;
                         }
                         debug!(
@@ -325,7 +319,9 @@ pub fn start_additional_cpus() {
     );
     let ipi_payload = InterProcessorInterruptPayload::new(frame_start_pointer);
     ipi_payload.load(BOOTSTRAP_CODE);
-    get_cpu_status_bits().get_mut().set(cpu_apic_id() as usize, true);
+    get_cpu_status_bits()
+        .get_mut()
+        .set(cpu_apic_id() as usize, true);
     unsafe {
         let platform_info = ACPI_TABLES.get().unwrap().platform_info().unwrap();
         let processor_info = platform_info.processor_info.unwrap();
@@ -426,7 +422,7 @@ pub unsafe extern "C" fn ap_entry() -> ! {
     debug!("Initializing GDT");
     gdt_info.init();
     crate::arch::arch_x86_64::idt::init();
-    let local_apic_id = cpu_apic_id();
+    let _local_apic_id = cpu_apic_id();
     debug!("AP active!");
     ap_main()
 }

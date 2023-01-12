@@ -8,5 +8,5 @@ pub enum SyscallNumber {
     Invalid,
     ContextSwitch,
     AllocatePage,
-    AllocatePageRange
+    AllocatePageRange,
 }

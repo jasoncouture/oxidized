@@ -1,4 +1,3 @@
-use alloc::string::{String, ToString};
 use core::arch::asm;
 
 use acpi::InterruptModel::*;
@@ -9,7 +8,7 @@ use x86_64::{
 
 use crate::{debug, memory::KERNEL_MEMORY_MANAGER};
 
-use super::{acpi::get_acpi_tables, timer::SPIN_TIMER};
+use super::acpi::get_acpi_tables;
 
 const APIC_REGISTER_ADDRESS_MASK: usize = 0x0FF0;
 

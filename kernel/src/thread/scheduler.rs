@@ -1,5 +1,4 @@
 use core::cell::OnceCell;
-use lazy_static::*;
 
 pub struct Scheduler {}
 

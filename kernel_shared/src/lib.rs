@@ -1,7 +1,5 @@
 #![no_std]
 
-use constants::ARCH_WORD_SIZE;
-
 pub mod constants;
 pub mod handle;
 pub mod ipc;

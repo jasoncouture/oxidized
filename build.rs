@@ -24,7 +24,7 @@ fn main() {
     disk_image_builder.set_ramdisk(&ramdisk);
     disk_image_builder.create_uefi_image(&uefi_path).unwrap();
     //disk_image_builder.create_bios_image(&bios_path).unwrap();
-    
+
     // pass the disk image paths as env variables to the `main.rs`
     println!("cargo:rustc-env=UEFI_PATH={}", uefi_path.display());
     println!("cargo:rustc-env=BIOS_PATH={}", bios_path.display());

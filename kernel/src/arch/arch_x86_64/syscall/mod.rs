@@ -2,7 +2,7 @@ use core::arch::asm;
 
 use x86::msr;
 
-use super::gdt::{self, BOOT_GDT};
+use super::gdt::BOOT_GDT;
 
 pub fn init() {
     // IA32_STAR[31:0] are reserved.
