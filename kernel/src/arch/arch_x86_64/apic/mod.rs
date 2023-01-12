@@ -48,9 +48,7 @@ impl AdvancedProgrammableInterruptController {
         let pointer = self.get_register_pointer(register);
         let pointer = core::hint::black_box(pointer);
         unsafe {
-            asm!("sfence");
             pointer.write_volatile(value);
-            asm!("sfence");
         }
     }
 
@@ -161,19 +159,19 @@ impl AdvancedProgrammableInterruptController {
     }
 
     #[inline]
-    pub fn send_ipi_init(self, cpu_id: u64) {
+    pub fn send_ipi_init(self, cpu_id: u16) {
         self.clear_apic_errors();
         // Assert INIT
-        let icr_value = cpu_id << 56 | 0x4500;
+        let icr_value = (cpu_id as u64) << 56 | 0x4500;
         self.send_ipi(icr_value);
         self.wait_for_ipi_delivery();
     }
 
     #[inline]
-    pub fn send_ipi_start(self, cpu_id: u64, segment: u8) {
+    pub fn send_ipi_start(self, cpu_id: u16, segment: u8) {
         self.clear_apic_errors();
         // SIPI
-        let icr_value = cpu_id << 56 | 0x4600 | (segment as u64);
+        let icr_value = (cpu_id as u64) << 56 | 0x4600 | (segment as u64);
         self.send_ipi(icr_value);
         self.wait_for_ipi_delivery();
     }

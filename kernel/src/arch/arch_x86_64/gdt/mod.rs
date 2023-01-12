@@ -1,4 +1,6 @@
+use alloc::vec::Vec;
 use core::alloc::Layout;
+use core::char::MAX;
 use lazy_static::lazy_static;
 use spin::Mutex;
 use x86_64::instructions::tables::load_tss;
@@ -10,40 +12,30 @@ use x86_64::structures::gdt::{
 use x86_64::structures::tss::TaskStateSegment;
 use x86_64::VirtAddr;
 
-use crate::memory::allocator::{kmalloc, PAGE_SIZE};
+use crate::memory::allocator::PAGE_SIZE;
 
-pub const INTERRUPT_STACK_SIZE_PAGES: usize = 1;
+use super::cpu::cpu_apic_id;
+
+pub const INTERRUPT_STACK_SIZE_PAGES: usize = 4;
 pub const INTERRUPT_STACK_SIZE: usize = PAGE_SIZE * INTERRUPT_STACK_SIZE_PAGES;
+pub const MAX_CPU_COUNT: usize = 256;
 
 pub fn init() {
-    BOOT_GDT.init();
+    load_gdt(cpu_apic_id());
 }
 
-pub(crate) fn allocate_gdt() -> GdtPointer {
-    let gdt_pointer: GdtPointer;
-    let gdt_raw_pointer = kmalloc(Layout::new::<GdtInformation>());
-    let tss_raw_pointer = kmalloc(Layout::new::<TaskStateSegment>());
-    unsafe {
-        let mut tss = TaskStateSegment::new();
-        tss.interrupt_stack_table[DOUBLE_FAULT_IST_INDEX as usize] = VirtAddr::new(kmalloc(
-            Layout::from_size_align(INTERRUPT_STACK_SIZE, 16)
-                .expect("Invalid layout for interrupt stack?"),
-        )
-            as u64)
-            + INTERRUPT_STACK_SIZE;
-        (*(tss_raw_pointer as *mut TaskStateSegment)) = tss;
-        (*(gdt_raw_pointer as *mut GdtInformation)) = GdtInformation::new(
-            (tss_raw_pointer as *const TaskStateSegment)
-                .as_ref()
-                .unwrap(),
-        );
-        gdt_pointer = GdtPointer::new((gdt_raw_pointer as *const GdtInformation).as_ref().unwrap());
-    }
-    gdt_pointer
+pub fn load_gdt(cpu: u16) {
+    GDTS[cpu as usize].init();
 }
 
 pub const DOUBLE_FAULT_IST_INDEX: u16 = 0;
 pub const CONTEXT_SWITCH_IST_INDEX: u16 = 1;
+static mut TSS_STACKS: [[[u8; INTERRUPT_STACK_SIZE]; 10]; MAX_CPU_COUNT] =
+    [[[0; INTERRUPT_STACK_SIZE]; 10]; MAX_CPU_COUNT];
+
+fn get_tss_stacks_for_cpu(cpu_id: u16) -> &'static [[u8; INTERRUPT_STACK_SIZE]; 10] {
+    unsafe { &TSS_STACKS[cpu_id as usize] }
+}
 
 pub(crate) struct GdtInformation {
     gdt: GlobalDescriptorTable,
@@ -75,15 +67,14 @@ impl GdtInformation {
     }
 
     pub fn init(self: &'static Self) {
-        use x86_64::instructions::segmentation::{CS, DS};
+        use x86_64::instructions::segmentation::{CS, DS, SS};
 
         self.gdt.load();
 
         unsafe {
             CS::set_reg(self.kernel_code_selector);
             DS::set_reg(self.kernel_data_selector);
-            FS::set_reg(self.user_code_selector);
-            GS::set_reg(self.user_data_selector);
+            SS::set_reg(self.kernel_data_selector);
             load_tss(self.task_state_segment_selector);
         }
     }
@@ -103,7 +94,14 @@ impl GdtInformation {
 }
 
 lazy_static! {
-    pub(crate) static ref BOOT_GDT: GdtInformation = GdtInformation::new(&BOOT_TSS);
+    pub(crate) static ref GDTS: Vec<GdtInformation> = {
+        let mut gdts = Vec::new();
+        for i in 0..MAX_CPU_COUNT {
+            gdts.push(GdtInformation::new(&TASK_STATE_SEGMENTS[i]));
+        }
+
+        gdts
+    };
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -134,23 +132,25 @@ impl GdtPointer {
 }
 
 lazy_static! {
-    pub(crate) static ref BOOT_TSS: TaskStateSegment = {
-        let mut tss = TaskStateSegment::new();
-        tss.interrupt_stack_table[DOUBLE_FAULT_IST_INDEX as usize] = {
-            static mut STACK: [u8; INTERRUPT_STACK_SIZE] = [0; INTERRUPT_STACK_SIZE];
+    pub(crate) static ref TASK_STATE_SEGMENTS: Vec<TaskStateSegment> = {
+        let mut segments = Vec::new();
+        for i in 0..MAX_CPU_COUNT {
+            let mut tss = TaskStateSegment::new();
+            let stacks = get_tss_stacks_for_cpu(i as u16);
+            for x in 0..stacks.len() {
+                let stack_address = 
+                (VirtAddr::from_ptr(&stacks[x]) + (INTERRUPT_STACK_SIZE - 256)).align_down(16 as u64);
+                if x < 7 {
+                    tss.interrupt_stack_table[x] = stack_address;
+                }
 
-            let stack_start = VirtAddr::from_ptr(unsafe { &STACK });
-            let stack_end = stack_start + INTERRUPT_STACK_SIZE;
-            stack_end
-        };
-        tss.interrupt_stack_table[CONTEXT_SWITCH_IST_INDEX as usize] = {
-            static mut STACK: [u8; INTERRUPT_STACK_SIZE] = [0; INTERRUPT_STACK_SIZE];
-
-            let stack_start = VirtAddr::from_ptr(unsafe { &STACK });
-            let stack_end = stack_start + INTERRUPT_STACK_SIZE;
-            stack_end
-        };
-        tss
+                if x >= 7 && x < 10 {
+                    tss.privilege_stack_table[x - 7] = stack_address;
+                }
+            }
+            segments.push(tss);
+        }
+        segments
     };
 }
 lazy_static! {

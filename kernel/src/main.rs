@@ -17,7 +17,7 @@ extern crate alloc;
 use core::ptr::NonNull;
 
 use bootloader_api::{config::Mapping, info::MemoryRegionKind, BootInfo};
-use x86_64::VirtAddr;
+use x86_64::{VirtAddr, software_interrupt};
 
 use framebuffer::*;
 use memory::{
@@ -30,6 +30,8 @@ use crate::arch::{
     arch_x86_64::{get_cpu_brand_string, get_cpu_vendor_string},
     enable_interrupts, get_current_cpu, wait_for_interrupt,
 };
+
+use core::arch::asm;
 
 include!(concat!(env!("OUT_DIR"), "/metadata_constants.rs"));
 pub(crate) mod arch;
@@ -125,17 +127,17 @@ fn kernel_main() {
     create_kernel_process();
     enable_interrupts();
     let mut online_cpus = 0;
-    let status_bits = arch::arch_x86_64::cpu::get_cpu_status_bits();
+    let status_bits = arch::arch_x86_64::cpu::get_online_cpu_status_bits();
     {
         online_cpus = status_bits.lock().iter().filter(|b| *b == true).count();
     }
     debug!("Boot complete with {} CPUs online.", online_cpus);
     debug!("TODO: Implement something.");
-    // debug!("Requesting context switch");
-    // unsafe {
-    //     software_interrupt!(254);
-    // }
-    // debug!("Execution resumed after context switch!");
+    debug!("Requesting context switch");
+    unsafe {
+        software_interrupt!(254);
+    }
+    debug!("Execution resumed after context switch!");
     loop {
         // let ticks = get_timer_ticks();
         // debug!("Tick: {}", ticks);

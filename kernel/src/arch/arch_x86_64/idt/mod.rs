@@ -127,9 +127,9 @@ impl InterruptHandlers {
     }
     extern "x86-interrupt" fn stack_segment_fault(
         _stack_frame: InterruptStackFrame,
-        _error_code: u64,
+        error_code: u64,
     ) {
-        panic!("STACK SEGMENT FAULT");
+        panic!("STACK SEGMENT FAULT: {}", error_code);
     }
     extern "x86-interrupt" fn virtualization(_stack_frame: InterruptStackFrame) {
         panic!("VIRTUALIZATION");
