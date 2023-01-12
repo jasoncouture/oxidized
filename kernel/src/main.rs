@@ -131,12 +131,20 @@ fn kernel_main() {
     }
     create_kernel_process();
     enable_interrupts();
-    debug!("Requesting context switch");
-    unsafe {
-        software_interrupt!(254);
+    let mut online_cpus = 0;
+    let status_bits = arch::arch_x86_64::cpu::get_cpu_status_bits();
+    {
+        online_cpus = status_bits.lock().iter().filter(|b| *b == true).count();
     }
-    debug!("Execution resumed after context switch!");
+    debug!("Boot complete with {} CPUs online.", online_cpus);
+    debug!("TODO: Implement something.");
+    // debug!("Requesting context switch");
+    // unsafe {
+    //     software_interrupt!(254);
+    // }
+    // debug!("Execution resumed after context switch!");
     loop {
+        
         // let ticks = get_timer_ticks();
         // debug!("Tick: {}", ticks);
         wait_for_interrupt();

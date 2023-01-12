@@ -15,8 +15,8 @@ pub(crate) mod idt;
 pub(crate) mod syscall;
 pub(crate) mod acpi;
 pub(crate) mod apic;
-mod cpu;
-mod timer;
+pub(crate) mod cpu;
+pub(crate) mod timer;
 
 pub const PIC_1_OFFSET: u8 = 32;
 pub const PIC_2_OFFSET: u8 = PIC_1_OFFSET + 8;
@@ -84,6 +84,6 @@ pub fn wait_for_interrupt_hardware() {
     interrupts::enable_and_hlt();
 }
 
-pub fn current_cpu() -> u8 {
+pub fn current_cpu() -> u16 {
     cpu_apic_id()
 }

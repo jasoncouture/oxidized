@@ -4,7 +4,7 @@ use x86_64::structures::idt::InterruptStackFrame;
 use crate::{arch::arch_x86_64::cpu, debug};
 
 #[no_mangle]
-pub(crate) extern "x86-interrupt" fn context_switch(state: InterruptStackFrame) {
+pub(crate) extern "x86-interrupt" fn context_switch(_state: InterruptStackFrame) {
     debug!("Context switch interrupt called on CPU: {}", cpu::current());
 }
 

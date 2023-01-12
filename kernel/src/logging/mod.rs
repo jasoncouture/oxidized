@@ -1,5 +1,4 @@
-use alloc::fmt::format;
-use core::{fmt::Display, panic};
+use core::{fmt::Display};
 
 #[derive(Debug)]
 pub enum LogLevel {
@@ -11,8 +10,9 @@ pub enum LogLevel {
     FATAL
 }
 pub(crate) fn _print(log_level: LogLevel, args: core::fmt::Arguments) {
-    crate::println!("[{}]: {}", log_level, args);
-    crate::console_println!("[{}]: {}", log_level, args);
+    let cpu = super::arch::get_current_cpu();
+    crate::println!("[C:{:03}][{}]: {}", cpu, log_level, args);
+    crate::console_println!("[C:{:03}][{}]: {}", cpu, log_level, args);
 }
 
 impl Display for LogLevel {

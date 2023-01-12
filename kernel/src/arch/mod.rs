@@ -46,6 +46,6 @@ pub fn get_timer_ticks() -> usize {
 }
 
 #[inline]
-pub fn get_current_cpu() -> u8 {
+pub fn get_current_cpu() -> u16 {
     current_cpu()
 }

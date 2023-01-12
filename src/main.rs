@@ -31,7 +31,7 @@ fn create_command(image_path: &str, uefi: bool) -> Command {
         .arg("-m")
         .arg("size=1024")
         .arg("-smp")
-        .arg("cpus=2")
+        .arg("cpus=8")
         .arg("-d")
         .arg("cpu_reset")
         .arg("-accel")
