@@ -16,7 +16,6 @@ pub(crate) mod cpu;
 pub(crate) mod gdt;
 pub(crate) mod idt;
 pub(crate) mod syscall;
-pub(crate) mod timer;
 pub mod cpuid;
 
 pub const PIC_1_OFFSET: u8 = 32;
@@ -29,8 +28,6 @@ pub fn init_hardware(boot_info: &BootInfo) {
     gdt::init();
     debug!("Initializing IDT");
     idt::init();
-    debug!("Initializing delay loops");
-    timer::init();
     debug!("Initializing ACPI");
     acpi::init(boot_info.rsdp_addr.into_option());
     debug!("Initializing APIC");

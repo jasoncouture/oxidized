@@ -36,7 +36,7 @@ fn create_command(image_path: &str, uefi: bool) -> Command {
         .arg("-d")
         .arg("cpu_reset")
         .arg("-accel")
-        .arg("tcg");
+        .arg("kvm");
 
     return cmd;
 }
