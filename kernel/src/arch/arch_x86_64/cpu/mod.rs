@@ -1,27 +1,25 @@
 use core::{arch::asm, cell::OnceCell};
 
-use alloc::slice;
 use bitvec::prelude::*;
-use bitvec::{array::BitArray, ptr::slice_from_raw_parts};
+use bitvec::array::BitArray;
 
 use spin::Mutex;
 use x86_64::{
-    software_interrupt,
+    instructions::interrupts,
     structures::paging::{PageTableFlags, PhysFrame},
     PhysAddr,
 };
 
 use kernel_shared::memory::memcpy;
 
+use crate::arch::arch_x86_64::{apic, gdt, idt};
 use crate::kernel_cpu_main;
 use crate::{
-    arch::arch_x86_64::timer::SPIN_TIMER,
     debug,
     memory::{
         allocator::{KERNEL_FRAME_ALLOCATOR, PAGE_SIZE},
         KERNEL_MEMORY_MANAGER,
     },
-    warn,
 };
 
 use super::{acpi::ACPI_TABLES, apic::LOCAL_APIC};
@@ -190,7 +188,23 @@ impl InterProcessorInterruptPayload {
 }
 
 pub extern "C" fn cpu_apic_id() -> usize {
-    unsafe { return LOCAL_APIC.get_apic_id() as usize }
+    unsafe {
+        let mut id: usize;
+        asm!(
+            "push rbx",
+            "mov rax, 1",
+            "cpuid",
+            "mov rax, rbx",
+            "shr rax, 24",
+            "and rax, 0xff",
+            "pop rbx",
+            out("rax") id,
+            out("rcx") _,
+            out("rdx") _
+        );
+
+        id
+    }
 }
 
 pub fn start_additional_cpus() {
@@ -315,20 +329,19 @@ fn mark_cpu_booting() {
 pub unsafe extern "C" fn ap_entry() -> ! {
     mark_cpu_booting();
     debug!("AP booting.");
-    debug!("Initializing GDT");
-    crate::arch::arch_x86_64::gdt::init();
-    crate::arch::arch_x86_64::idt::init();
+    gdt::init();
+    idt::init();
+    unsafe {
+        apic::init_ap();
+    }
     mark_cpu_online();
     debug!("AP active!");
+    crate::arch::arch_x86_64::apic::init_ap();
     ap_main()
 }
 
 pub fn ap_main() -> ! {
-    debug!("Testing interrupt -> 254");
-    unsafe {
-        software_interrupt!(254);
-    }
-    debug!("Resumed after interrupt.");
+    interrupts::enable();
     kernel_cpu_main();
 }
 

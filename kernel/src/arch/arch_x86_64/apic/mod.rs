@@ -43,9 +43,9 @@ pub struct AdvancedProgrammableInterruptController {
 }
 
 impl AdvancedProgrammableInterruptController {
-    fn read_register(&self, register: usize) -> u64 {
+    fn read_register(&self, register: usize) -> u32 {
         let pointer = self.get_register_pointer(register);
-        unsafe { pointer.read_volatile() as u64 }
+        unsafe { pointer.read_volatile() }
     }
 
     #[inline]
@@ -63,7 +63,6 @@ impl AdvancedProgrammableInterruptController {
             panic!("Attempted to use local xAPIC address, when using x2 APIC!");
         }
         let pointer = self.get_register_pointer(register);
-        let pointer = core::hint::black_box(pointer);
         unsafe {
             pointer.write_volatile(value);
         }
@@ -89,7 +88,7 @@ impl AdvancedProgrammableInterruptController {
             return 0;
         }
         if self.x2 {
-            self.read_apic_msr(IA32_X2APIC_APICID)
+            self.read_apic_msr(IA32_X2APIC_APICID) & u32::MAX as u64
         } else {
             self.read_register(APIC_REGISTER_OFFSET_ID) as u64
         }
@@ -109,7 +108,7 @@ impl AdvancedProgrammableInterruptController {
         if self.x2 {
             self.read_apic_msr(IA32_X2APIC_TPR)
         } else {
-            self.read_register(APIC_REGISTER_OFFSET_TASK_PRIORITY)
+            self.read_register(APIC_REGISTER_OFFSET_TASK_PRIORITY) as u64
         }
     }
 
@@ -118,7 +117,7 @@ impl AdvancedProgrammableInterruptController {
         if self.x2 {
             self.read_apic_msr(IA32_X2APIC_PPR)
         } else {
-            self.read_register(APIC_REGISTER_OFFSET_ARBITRATION_PRIORITY)
+            self.read_register(APIC_REGISTER_OFFSET_ARBITRATION_PRIORITY) as u64
         }
     }
 
@@ -127,7 +126,7 @@ impl AdvancedProgrammableInterruptController {
         if self.x2 {
             self.read_apic_msr(IA32_X2APIC_PPR)
         } else {
-            self.read_register(APIC_REGISTER_OFFSET_PROCESSOR_PRIORITY)
+            self.read_register(APIC_REGISTER_OFFSET_PROCESSOR_PRIORITY) as u64
         }
     }
 
@@ -136,7 +135,7 @@ impl AdvancedProgrammableInterruptController {
         if self.x2 {
             self.read_apic_msr(IA32_X2APIC_SIVR)
         } else {
-            self.read_register(APIC_REGISTER_OFFSET_SPURIOUS_INTERRUPT_VECTOR)
+            self.read_register(APIC_REGISTER_OFFSET_SPURIOUS_INTERRUPT_VECTOR) as u64
         }
     }
 
@@ -154,7 +153,7 @@ impl AdvancedProgrammableInterruptController {
         if self.x2 {
             self.read_apic_msr(IA32_X2APIC_DIV_CONF)
         } else {
-            self.read_register(APIC_REGISTER_OFFSET_TIMER_DIVISOR)
+            self.read_register(APIC_REGISTER_OFFSET_TIMER_DIVISOR) as u64
         }
     }
 
@@ -192,7 +191,7 @@ impl AdvancedProgrammableInterruptController {
             self.read_apic_msr(IA32_X2APIC_LVT_ERROR)
         } else {
             self.write_register(APIC_REGISTER_OFFSET_ERROR_STATUS, 0);
-            self.read_register(APIC_REGISTER_OFFSET_ERROR_STATUS)
+            self.read_register(APIC_REGISTER_OFFSET_ERROR_STATUS) as u64
         }
     }
 
@@ -253,7 +252,11 @@ impl AdvancedProgrammableInterruptController {
     }
 
     pub fn clear_apic_errors(&self) {
-        self.write_register(APIC_REGISTER_OFFSET_ERROR_STATUS, 0);
+        if self.x2 {
+            self.write_apic_msr(IA32_X2APIC_LVT_ERROR, 0);
+        } else {
+            self.write_register(APIC_REGISTER_OFFSET_ERROR_STATUS, 0);
+        }
     }
 
     #[inline]
@@ -322,32 +325,25 @@ pub fn init() {
         }
     }
 
-    init_ap();
-
     unsafe {
-
+        init_ap();
     }
 }
 
-fn init_ap() {
-    unsafe {
-        if LOCAL_APIC.x2 {
-            LOCAL_APIC.write_apic_msr(
-                IA32_APIC_BASE,
-                LOCAL_APIC.read_apic_msr(IA32_APIC_BASE) | 1 << 10,
-            );
-        }
-        let mut sivr = LOCAL_APIC.get_spurious_interrupt_vector();
-        sivr = sivr | 0xFF;
-        LOCAL_APIC.set_spurious_interrupt_vector(sivr);
-        sivr = LOCAL_APIC.get_spurious_interrupt_vector();
-        sivr = sivr | 0x100;
-        LOCAL_APIC.set_spurious_interrupt_vector(sivr);
-        debug!("Starting timer on IRQ0 (Vector 32)");
-        // 0x20000 - Enable periodic timer, 32 == interrupt vector (IRQ0, Vector 32)
-        LOCAL_APIC.set_local_vector_table_timer(32 | 0x20000);
-        LOCAL_APIC.set_timer_divisor(0x03);
-        LOCAL_APIC.set_timer_initial_count(0xFF00);
-        debug!("APIC setup complete.");
+pub(crate) unsafe fn init_ap() {
+    if LOCAL_APIC.x2 {
+        LOCAL_APIC.write_apic_msr(
+            IA32_APIC_BASE,
+            LOCAL_APIC.read_apic_msr(IA32_APIC_BASE) | 1 << 10,
+        );
     }
+    let mut sivr = LOCAL_APIC.get_spurious_interrupt_vector();
+    sivr = sivr | 0x1FF;
+    LOCAL_APIC.set_spurious_interrupt_vector(sivr);
+    debug!("Starting timer on IRQ0 (Vector 32)");
+    // 0x20000 - Enable periodic timer, 32 == interrupt vector (IRQ0, Vector 32)
+    LOCAL_APIC.set_local_vector_table_timer(32 | 0x20000);
+    LOCAL_APIC.set_timer_divisor(0x03);
+    LOCAL_APIC.set_timer_initial_count(0xFF00);
+    debug!("APIC setup complete.");
 }
