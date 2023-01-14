@@ -8,7 +8,7 @@ use spin::{self, Mutex};
 
 use x86_64::{
     set_general_handler,
-    structures::idt::{InterruptDescriptorTable, InterruptStackFrame, PageFaultErrorCode},
+    structures::idt::{InterruptDescriptorTable, InterruptStackFrame, PageFaultErrorCode}, VirtAddr, PrivilegeLevel,
 };
 
 use crate::{
@@ -173,7 +173,7 @@ lazy_static! {
 
         // Allocate all general handlers to our generic handler.
         unsafe {
-            idt[0xFE].set_handler_fn(contextswitch::context_switch).set_stack_index(CONTEXT_SWITCH_IST_INDEX);
+            idt[0xFE].set_handler_addr(VirtAddr::from_ptr(contextswitch::_context_switch as *const u8));
         }
         set_general_handler!(&mut idt, general_interrupt_handler, 0x20);
         set_general_handler!(&mut idt, general_interrupt_handler, 0xFF);

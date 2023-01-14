@@ -2,7 +2,6 @@ use alloc::{boxed::Box, vec::Vec};
 
 use x86_64::structures::{paging::PageTable, tss::TaskStateSegment};
 
-pub(crate) mod context;
 pub(crate) mod process;
 pub(crate) mod scheduler;
 

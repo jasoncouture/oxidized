@@ -12,6 +12,7 @@ use x86_64::{
 
 use kernel_shared::memory::memcpy;
 
+use crate::kernel_cpu_main;
 use crate::{
     arch::arch_x86_64::timer::SPIN_TIMER,
     debug,
@@ -372,11 +373,10 @@ pub unsafe extern "C" fn ap_entry() -> ! {
 pub fn ap_main() -> ! {
     debug!("Testing interrupt -> 254");
     unsafe { software_interrupt!(254); }
-    debug!("Entering idle spin loop");
-    loop {
-        x86_64::instructions::interrupts::enable_and_hlt();
-    }
+    debug!("Resumed after interrupt.");
+    kernel_cpu_main();
 }
+
 
 pub fn current() -> u16 {
     cpu_apic_id()

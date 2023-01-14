@@ -16,6 +16,7 @@ extern crate alloc;
 
 use core::ptr::NonNull;
 
+use arch::arch_x86_64::cpu::cpu_apic_id;
 use bootloader_api::{config::Mapping, info::MemoryRegionKind, BootInfo};
 use x86_64::{VirtAddr, software_interrupt};
 
@@ -109,21 +110,6 @@ fn kernel_main() {
     );
     verbose!("CPU Vendor: {}", get_cpu_vendor_string());
     verbose!("CPU Brand : {}", get_cpu_brand_string());
-    verbose!("Bootloader provided memory map, with unusable page ranges:");
-    unsafe {
-        for range in KERNEL_FRAME_ALLOCATOR
-            .get_memory_regions()
-            .iter()
-            .filter(|range| range.kind != MemoryRegionKind::Usable)
-        {
-            verbose!(
-                "-- {:#016x} to {:#016x} - {:?}",
-                range.start,
-                range.end,
-                range.kind
-            );
-        }
-    }
     create_kernel_process();
     enable_interrupts();
     let mut online_cpus = 0;
@@ -132,12 +118,19 @@ fn kernel_main() {
         online_cpus = status_bits.lock().iter().filter(|b| *b == true).count();
     }
     debug!("Boot complete with {} CPUs online.", online_cpus);
-    debug!("TODO: Implement something.");
     debug!("Requesting context switch");
     unsafe {
         software_interrupt!(254);
     }
     debug!("Execution resumed after context switch!");
+    // Join the APIs in their halt loop glory.
+    kernel_cpu_main();
+}
+
+fn kernel_cpu_main() -> ! {
+    let cpu = cpu_apic_id();
+    debug!("Entered kernel_cpu_main on CPU #{}", cpu);
+    
     loop {
         // let ticks = get_timer_ticks();
         // debug!("Tick: {}", ticks);

@@ -28,6 +28,10 @@ pub fn load_gdt(cpu: u16) {
     GDTS[cpu as usize].init();
 }
 
+pub fn get_gdt(cpu: u16) -> &'static GdtInformation {
+    &GDTS[cpu as usize]
+}
+
 pub const DOUBLE_FAULT_IST_INDEX: u16 = 0;
 pub const CONTEXT_SWITCH_IST_INDEX: u16 = 1;
 static mut TSS_STACKS: [[[u8; INTERRUPT_STACK_SIZE]; 10]; MAX_CPU_COUNT] =
@@ -37,7 +41,7 @@ fn get_tss_stacks_for_cpu(cpu_id: u16) -> &'static [[u8; INTERRUPT_STACK_SIZE]; 
     unsafe { &TSS_STACKS[cpu_id as usize] }
 }
 
-pub(crate) struct GdtInformation {
+pub struct GdtInformation {
     gdt: GlobalDescriptorTable,
     kernel_code_selector: SegmentSelector,
     kernel_data_selector: SegmentSelector,
@@ -86,6 +90,10 @@ impl GdtInformation {
 
     pub(crate) fn get_user_code_segment(&self) -> SegmentSelector {
         self.user_code_selector
+    }
+
+    pub(crate) fn get_user_data_segment(&self) -> SegmentSelector {
+        self.user_data_selector
     }
 
     pub(crate) fn get_task_state_segment(&self) -> SegmentSelector {

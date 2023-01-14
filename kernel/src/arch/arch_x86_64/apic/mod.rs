@@ -230,34 +230,14 @@ pub fn init() {
     unsafe {
         LOCAL_APIC.address = apic_ptr;
     }
-    debug!("Identity mapped apic into kernel memory map.");
 
-    let id = unsafe { LOCAL_APIC.get_apic_id() };
-    let version = unsafe { LOCAL_APIC.get_version() };
-
-    debug!("APIC ID: {}, Version: {:#08x}", id, version);
-
-    debug!("Priorities:");
-    debug!("   Task       : {}", unsafe {
-        LOCAL_APIC.get_task_priority()
-    });
-    debug!("   Arbitration: {}", unsafe {
-        LOCAL_APIC.get_arbiration_priority()
-    });
-    debug!("   Processor  : {}", unsafe {
-        LOCAL_APIC.get_processor_priority()
-    });
-    debug!("Setting spurious interrupt vector to 255");
     unsafe {
         let mut sivr = LOCAL_APIC.get_spurious_interrupt_vector();
-        debug!("Before setting vector and enabling: {:#08x}", sivr);
         sivr = sivr | 0xFF;
         LOCAL_APIC.set_spurious_interrupt_vector(sivr);
         sivr = LOCAL_APIC.get_spurious_interrupt_vector();
-        debug!("After setting vector only: {:#08x}", sivr);
         sivr = sivr | 0x100;
         LOCAL_APIC.set_spurious_interrupt_vector(sivr);
-        debug!("After enabling interrupts: {:#08x}", sivr);
         debug!("Starting timer on IRQ0 (Vector 32)");
         // 0x20000 - Enable periodic timer, 32 == interrupt vector (IRQ0, Vector 32)
         LOCAL_APIC.set_local_vector_table_timer(32 | 0x20000);
