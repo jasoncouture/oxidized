@@ -114,6 +114,8 @@ fn kernel_main() {
         "Oxidized kernel v{}, starting",
         METADATA_VERSION.unwrap_or("Unknown")
     );
+    verbose!("CPU Vendor: {}", get_cpu_vendor_string());
+    verbose!("CPU Brand : {}", get_cpu_brand_string());
     // Join the APIs in their halt loop glory.
     kernel_cpu_main();
 }
@@ -122,8 +124,6 @@ fn kernel_cpu_main() -> ! {
     // TODO: Enter the scheduler here.
     let cpu = cpu_apic_id();
     debug!("Entered kernel_cpu_main on CPU #{}", cpu);
-    verbose!("CPU Vendor: {}", get_cpu_vendor_string());
-    verbose!("CPU Brand : {}", get_cpu_brand_string());
     enable_interrupts();
     loop {
         // let ticks = get_timer_ticks();
