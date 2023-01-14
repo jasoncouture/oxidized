@@ -1,13 +1,14 @@
 use core::{arch::asm, cell::OnceCell};
 
 use alloc::slice;
-use bitvec::{array::BitArray, ptr::slice_from_raw_parts};
 use bitvec::prelude::*;
+use bitvec::{array::BitArray, ptr::slice_from_raw_parts};
 
 use spin::Mutex;
 use x86_64::{
+    software_interrupt,
     structures::paging::{PageTableFlags, PhysFrame},
-    PhysAddr, software_interrupt,
+    PhysAddr,
 };
 
 use kernel_shared::memory::memcpy;
@@ -40,7 +41,7 @@ trampoline:
     .cpu_id: dq 0 ;1
     .page_table: dq 0 ;2
     .stack_start: dq 0 ;3
-    .stack_end: dq 0 ;4 
+    .stack_end: dq 0 ;4
     .code: dq 0 ;5
     .booting: dq 0 ;6
 */
@@ -139,8 +140,8 @@ impl InterProcessorInterruptPayload {
         (self.as_ptr() as usize >> 12) as u16 & 0x00FFu16
     }
 
-    pub fn get_cpu_id(&self) -> u64 {
-        self.get_value(CPU_ID_OFFSET)
+    pub fn get_cpu_id(&self) -> usize {
+        self.get_value(CPU_ID_OFFSET) as usize
     }
 
     pub fn is_booting(&self) -> bool {
@@ -174,72 +175,22 @@ impl InterProcessorInterruptPayload {
         let segment = self.get_code_segment() as u8;
         let cpu_id = self.get_cpu_id();
         unsafe {
-            core::hint::black_box(LOCAL_APIC);
             self.clear_booting_flag();
-            LOCAL_APIC.send_ipi_init(cpu_id as u16);
-
-            for x in 0..2 {
-                if self.is_ready() {
-                    break;
-                } else if x != 0 {
-                    warn!(
-                        "CPU {} did not report after first SIPI, trying again (Attempt #{}).",
-                        cpu_id, x
-                    );
-                }
-                LOCAL_APIC.send_ipi_start(cpu_id as u16, segment);
-                match x {
-                    0 => {
-                        for _ in 0..200 {
-                            core::hint::spin_loop();
-                            SPIN_TIMER.micros(1);
-                        }
-                    }
-                    1 => {
-                        for _ in 0..1000 {
-                            core::hint::spin_loop();
-                            SPIN_TIMER.millis(1);
-                        }
-                    }
-                    _ => {}
-                }
-                if self.is_booting() {
-                    while !self.is_ready() {
-                        core::hint::spin_loop();
-                    }
-                }
+            LOCAL_APIC.send_ipi_init(cpu_id);
+            debug!("IPI INIT  -> ID: {}", cpu_id);
+            LOCAL_APIC.send_ipi_start(cpu_id, segment);
+            debug!("IPI START -> ID: {} CS: {}", cpu_id, segment);
+            while !self.is_ready() {
+                core::hint::spin_loop();
             }
-        }
-        if !self.is_ready() {
-            panic!("CPU BOOT FAILED FOR CPU: {}", self.get_cpu_id());
-        }
-    }
 
-    fn wait_for_cpu_online(&self) {
-        while !self.is_ready() {
-            core::hint::spin_loop();
+            debug!("CPU {} Signaled ready", cpu_id);
         }
     }
 }
 
-pub extern "C" fn cpu_apic_id() -> u16 {
-    let mut acpi_id: u8;
-    unsafe {
-        asm!(
-        "
-         // Due to LLVM, we need to preserve (R|E|)BX, so we copy it to eax instead.
-         push rbx;
-         mov rax, 1; 
-         cpuid; 
-         mov eax, ebx
-         shr eax, 24;
-         pop rbx;
-         ", 
-            out("al") acpi_id
-        );
-    }
-    // TODO, stick numa/ht in the upper 8 bits to allow for more than 256 CPUs.
-    return acpi_id as u16;
+pub extern "C" fn cpu_apic_id() -> usize {
+    unsafe { return LOCAL_APIC.get_apic_id() as usize }
 }
 
 pub fn start_additional_cpus() {
@@ -254,9 +205,11 @@ pub fn start_additional_cpus() {
         .identity_map(frame, PageTableFlags::WRITABLE | PageTableFlags::PRESENT);
     let ipi_payload = InterProcessorInterruptPayload::new(frame_start_pointer);
     ipi_payload.load(BOOTSTRAP_CODE);
+
     get_online_cpu_status_bits()
         .get_mut()
         .set(cpu_apic_id() as usize, true);
+
     unsafe {
         let platform_info = ACPI_TABLES.get().unwrap().platform_info().unwrap();
         let processor_info = platform_info.processor_info.unwrap();
@@ -372,12 +325,13 @@ pub unsafe extern "C" fn ap_entry() -> ! {
 
 pub fn ap_main() -> ! {
     debug!("Testing interrupt -> 254");
-    unsafe { software_interrupt!(254); }
+    unsafe {
+        software_interrupt!(254);
+    }
     debug!("Resumed after interrupt.");
     kernel_cpu_main();
 }
 
-
-pub fn current() -> u16 {
+pub fn current() -> usize {
     cpu_apic_id()
 }

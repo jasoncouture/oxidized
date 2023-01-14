@@ -1,6 +1,15 @@
-use core::arch::asm;
+use core::{arch::asm, panic};
 
 use acpi::InterruptModel::*;
+use raw_cpuid::CpuId;
+use x86::{
+    cpuid,
+    msr::{
+        rdmsr, wrmsr, IA32_APIC_BASE, IA32_X2APIC_APICID, IA32_X2APIC_DIV_CONF, IA32_X2APIC_EOI,
+        IA32_X2APIC_ICR, IA32_X2APIC_INIT_COUNT, IA32_X2APIC_LVT_ERROR, IA32_X2APIC_LVT_TIMER,
+        IA32_X2APIC_PPR, IA32_X2APIC_SIVR, IA32_X2APIC_TPR, IA32_X2APIC_VERSION,
+    },
+};
 use x86_64::{
     structures::paging::{PageTableFlags, PhysFrame},
     PhysAddr,
@@ -8,7 +17,7 @@ use x86_64::{
 
 use crate::{debug, memory::KERNEL_MEMORY_MANAGER};
 
-use super::acpi::get_acpi_tables;
+use super::{acpi::get_acpi_tables, cpuid::cpuid};
 
 const APIC_REGISTER_ADDRESS_MASK: usize = 0x0FF0;
 
@@ -25,26 +34,34 @@ const APIC_REGISTER_OFFSET_END_OF_INTERRUPT: usize = 0x0B0;
 const APIC_REGISTER_OFFSET_ERROR_STATUS: usize = 0x280;
 const APIC_REGISTER_IPI_LOW: usize = 0x300;
 const APIC_REGISTER_IPI_HIGH: usize = 0x310;
+const APIC_REGISTER_OFFSET_LOCAL_VECTOR_TABLE_ERROR: usize = 0x370;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub struct AdvancedProgrammableInterruptController {
     address: *mut u8,
+    x2: bool,
 }
 
 impl AdvancedProgrammableInterruptController {
-    fn read_register(self, register: usize) -> u32 {
+    fn read_register(&self, register: usize) -> u64 {
         let pointer = self.get_register_pointer(register);
-        unsafe { pointer.read_volatile() }
+        unsafe { pointer.read_volatile() as u64 }
     }
 
     #[inline]
-    fn get_register_pointer(self, register: usize) -> *mut u32 {
+    fn get_register_pointer(&self, register: usize) -> *mut u32 {
+        if self.x2 {
+            panic!("Attempted to use local xAPIC address, when using x2 APIC!");
+        }
         let register_address = (register & APIC_REGISTER_ADDRESS_MASK) as isize;
         unsafe { self.address.byte_offset(register_address as isize) as *mut u32 }
     }
 
     #[inline]
-    fn write_register(self, register: usize, value: u32) {
+    fn write_register(&self, register: usize, value: u32) {
+        if self.x2 {
+            panic!("Attempted to use local xAPIC address, when using x2 APIC!");
+        }
         let pointer = self.get_register_pointer(register);
         let pointer = core::hint::black_box(pointer);
         unsafe {
@@ -52,161 +69,223 @@ impl AdvancedProgrammableInterruptController {
         }
     }
 
-    #[inline]
-    pub fn get_apic_id(self) -> u32 {
-        self.read_register(APIC_REGISTER_OFFSET_ID)
+    pub fn read_apic_msr(&self, msr: u32) -> u64 {
+        if !self.x2 {
+            panic!("Attempted to use X2 APIC, but X2 APIC was not detected!");
+        }
+        unsafe { rdmsr(msr) }
+    }
+
+    pub fn write_apic_msr(&self, msr: u32, value: u64) {
+        if !self.x2 {
+            panic!("Attempted to use X2 APIC, but X2 APIC was not detected!");
+        }
+        unsafe { wrmsr(msr, value) }
     }
 
     #[inline]
-    pub fn set_apic_id(self, value: u32) {
-        self.write_register(APIC_REGISTER_OFFSET_ID, value);
+    pub fn get_apic_id(&self) -> u64 {
+        if !self.x2 && self.address as usize == 0 {
+            return 0;
+        }
+        if self.x2 {
+            self.read_apic_msr(IA32_X2APIC_APICID)
+        } else {
+            self.read_register(APIC_REGISTER_OFFSET_ID) as u64
+        }
     }
 
     #[inline]
-    pub fn get_version(self) -> u32 {
-        self.read_register(APIC_REGISTER_OFFSET_VERSION)
+    pub fn get_version(&self) -> u64 {
+        if self.x2 {
+            self.read_apic_msr(IA32_X2APIC_VERSION)
+        } else {
+            self.read_register(APIC_REGISTER_OFFSET_VERSION) as u64
+        }
     }
 
     #[inline]
-    pub fn get_task_priority(self) -> u32 {
-        self.read_register(APIC_REGISTER_OFFSET_TASK_PRIORITY)
+    pub fn get_task_priority(&self) -> u64 {
+        if self.x2 {
+            self.read_apic_msr(IA32_X2APIC_TPR)
+        } else {
+            self.read_register(APIC_REGISTER_OFFSET_TASK_PRIORITY)
+        }
     }
 
     #[inline]
-    pub fn get_arbiration_priority(self) -> u32 {
-        self.read_register(APIC_REGISTER_OFFSET_ARBITRATION_PRIORITY)
+    pub fn get_arbiration_priority(&self) -> u64 {
+        if self.x2 {
+            self.read_apic_msr(IA32_X2APIC_PPR)
+        } else {
+            self.read_register(APIC_REGISTER_OFFSET_ARBITRATION_PRIORITY)
+        }
     }
 
     #[inline]
-    pub fn get_processor_priority(self) -> u32 {
-        self.read_register(APIC_REGISTER_OFFSET_PROCESSOR_PRIORITY)
+    pub fn get_processor_priority(&self) -> u64 {
+        if self.x2 {
+            self.read_apic_msr(IA32_X2APIC_PPR)
+        } else {
+            self.read_register(APIC_REGISTER_OFFSET_PROCESSOR_PRIORITY)
+        }
     }
 
     #[inline]
-    pub fn get_spurious_interrupt_vector(self) -> u32 {
-        self.read_register(APIC_REGISTER_OFFSET_SPURIOUS_INTERRUPT_VECTOR)
+    pub fn get_spurious_interrupt_vector(&self) -> u64 {
+        if self.x2 {
+            self.read_apic_msr(IA32_X2APIC_SIVR)
+        } else {
+            self.read_register(APIC_REGISTER_OFFSET_SPURIOUS_INTERRUPT_VECTOR)
+        }
     }
 
     #[inline]
-    pub fn set_spurious_interrupt_vector(self, value: u32) {
-        self.write_register(APIC_REGISTER_OFFSET_SPURIOUS_INTERRUPT_VECTOR, value)
+    pub fn set_spurious_interrupt_vector(&self, value: u64) {
+        if self.x2 {
+            self.write_apic_msr(IA32_X2APIC_SIVR, value)
+        } else {
+            self.write_register(APIC_REGISTER_OFFSET_SPURIOUS_INTERRUPT_VECTOR, value as u32)
+        }
     }
 
     #[inline]
-    pub fn get_local_vector_table_timer(self) -> u32 {
-        self.read_register(APIC_REGISTER_OFFSET_LOCAL_VECTOR_TABLE_TIMER)
+    pub fn get_timer_divisor(&self) -> u64 {
+        if self.x2 {
+            self.read_apic_msr(IA32_X2APIC_DIV_CONF)
+        } else {
+            self.read_register(APIC_REGISTER_OFFSET_TIMER_DIVISOR)
+        }
     }
 
     #[inline]
-    pub fn set_local_vector_table_timer(self, value: u32) {
-        self.write_register(APIC_REGISTER_OFFSET_LOCAL_VECTOR_TABLE_TIMER, value);
+    pub fn set_timer_divisor(&self, value: u32) {
+        if self.x2 {
+            self.write_apic_msr(IA32_X2APIC_DIV_CONF, value as u64);
+        } else {
+            self.write_register(APIC_REGISTER_OFFSET_TIMER_DIVISOR, value);
+        }
     }
 
     #[inline]
-    pub fn get_timer_divisor(self) -> u32 {
-        self.read_register(APIC_REGISTER_OFFSET_TIMER_DIVISOR)
+    pub fn set_timer_initial_count(&self, value: u32) {
+        if self.x2 {
+            self.write_apic_msr(IA32_X2APIC_INIT_COUNT, value as u64);
+        } else {
+            self.write_register(APIC_REGISTER_OFFSET_TIMER_INITIAL_COUNT, value);
+        }
     }
 
     #[inline]
-    pub fn set_timer_divisor(self, value: u32) {
-        self.write_register(APIC_REGISTER_OFFSET_TIMER_DIVISOR, value);
+    pub fn end_of_interrupt(&self) {
+        if self.x2 {
+            self.write_apic_msr(IA32_X2APIC_EOI, 0);
+        } else {
+            self.write_register(APIC_REGISTER_OFFSET_END_OF_INTERRUPT, 0);
+        }
     }
 
     #[inline]
-    pub fn set_timer_initial_count(self, value: u32) {
-        self.write_register(APIC_REGISTER_OFFSET_TIMER_INITIAL_COUNT, value);
+    pub fn get_error_status(&self) -> u64 {
+        if self.x2 {
+            self.write_apic_msr(IA32_X2APIC_LVT_ERROR, 0);
+            self.read_apic_msr(IA32_X2APIC_LVT_ERROR)
+        } else {
+            self.write_register(APIC_REGISTER_OFFSET_ERROR_STATUS, 0);
+            self.read_register(APIC_REGISTER_OFFSET_ERROR_STATUS)
+        }
     }
 
     #[inline]
-    pub fn end_of_interrupt(self) {
-        self.write_register(APIC_REGISTER_OFFSET_END_OF_INTERRUPT, 0);
+    pub fn set_error_status(&self, value: u64) {
+        if self.x2 {
+            self.write_apic_msr(IA32_X2APIC_LVT_ERROR, value)
+        } else {
+            self.write_register(APIC_REGISTER_OFFSET_ERROR_STATUS, value as u32)
+        }
     }
 
     #[inline]
-    pub fn get_error_status(self) -> u32 {
-        self.read_register(APIC_REGISTER_OFFSET_ERROR_STATUS)
+    pub fn get_icr(&self) -> u64 {
+        if self.x2 {
+            self.read_apic_msr(IA32_X2APIC_ICR)
+        } else {
+            let ipi_high = self.read_register(APIC_REGISTER_IPI_HIGH) as u64;
+            let ipi_low = self.read_register(APIC_REGISTER_IPI_LOW) as u64;
+
+            (ipi_high << 32) | (ipi_low & u32::MAX as u64)
+        }
     }
 
     #[inline]
-    pub fn set_error_status(self, value: u32) {
-        self.write_register(APIC_REGISTER_OFFSET_ERROR_STATUS, value)
-    }
-
-    #[inline]
-    pub fn get_ipi_high(self) -> u32 {
-        self.read_register(APIC_REGISTER_IPI_HIGH)
-    }
-
-    #[inline]
-    pub fn get_ipi_low(self) -> u32 {
-        self.read_register(APIC_REGISTER_IPI_LOW)
-    }
-
-    #[inline]
-    pub fn get_ipi(self) -> u64 {
-        let ipi_high = self.get_ipi_high() as u64;
-        let ipi_low = self.get_ipi_low() as u64;
-
-        (ipi_high << 32) | (ipi_low & u32::MAX as u64)
-    }
-
-    #[inline]
-    pub fn wait_for_ipi_delivery(self) {
-        const PENDING: u32 = 1 << 12;
-        while self.get_ipi_high() & PENDING == PENDING {
+    pub fn wait_for_ipi_delivery(&self) {
+        if self.x2 {
+            return;
+        }
+        const PENDING: u64 = 1 << 12;
+        while self.get_icr() & PENDING == PENDING {
             core::hint::spin_loop();
         }
     }
 
     #[inline]
-    pub fn send_ipi_init(self, cpu_id: u16) {
+    pub fn send_ipi_init(&self, cpu_id: usize) {
         self.clear_apic_errors();
         // Assert INIT
-        let icr_value = (cpu_id as u64) << 56 | 0x4500;
-        self.send_ipi(icr_value);
+        let icr_value: u64 = 0x4500 | self.get_icr_cpu_value(cpu_id);
+        self.set_icr(icr_value);
+    }
+
+    fn get_icr_cpu_value(&self, cpu_id: usize) -> u64 {
+        let shift = match self.x2 {
+            true => 32,
+            false => 56,
+        };
+        (cpu_id as u64) << shift
     }
 
     #[inline]
-    pub fn send_ipi_start(self, cpu_id: u16, segment: u8) {
+    pub fn send_ipi_start(&self, cpu_id: usize, segment: u8) {
         self.clear_apic_errors();
         // SIPI
-        let icr_value = (cpu_id as u64) << 56 | 0x4600 | (segment as u64);
-        self.send_ipi(icr_value);
+        let icr_value = self.get_icr_cpu_value(cpu_id) | 0x4600 | (segment as u64);
+        self.set_icr(icr_value);
     }
 
-    #[inline]
-    pub fn send_ipi_32(self, ipi_high: u32, ipi_low: u32) {
-        self.set_ipi_high(ipi_high);
-        self.set_ipi_low(ipi_low);
-        self.wait_for_ipi_delivery();
-    }
-
-    pub fn clear_apic_errors(self) {
+    pub fn clear_apic_errors(&self) {
         self.write_register(APIC_REGISTER_OFFSET_ERROR_STATUS, 0);
     }
 
     #[inline]
-    pub fn send_ipi(self, value: u64) {
-        let ipi_high = (value >> 32) & u32::MAX as u64;
-        let ipi_high = ipi_high as u32;
-        let ipi_low = value as u32;
-        self.send_ipi_32(ipi_high, ipi_low);
+    pub fn set_icr(&self, value: u64) {
+        self.wait_for_ipi_delivery();
+        if self.x2 {
+            self.write_apic_msr(IA32_X2APIC_ICR, value)
+        } else {
+            let ipi_high = (value >> 32) & u32::MAX as u64;
+            let ipi_high = ipi_high as u32;
+            self.wait_for_ipi_delivery();
+            self.write_register(APIC_REGISTER_IPI_HIGH, ipi_high);
+            let ipi_low = value as u32;
+
+            self.write_register(APIC_REGISTER_IPI_LOW, ipi_low);
+            self.wait_for_ipi_delivery();
+        }
     }
 
-    #[inline]
-    pub fn set_ipi_high(self, value: u32) {
-        self.write_register(APIC_REGISTER_IPI_HIGH, value);
-    }
-
-    #[inline]
-    pub fn set_ipi_low(self, value: u32) {
-        self.write_register(APIC_REGISTER_IPI_LOW, value);
+    pub fn set_local_vector_table_timer(&self, value: u64) {
+        if self.x2 {
+            self.write_apic_msr(IA32_X2APIC_LVT_TIMER, value)
+        } else {
+            self.write_register(APIC_REGISTER_OFFSET_LOCAL_VECTOR_TABLE_TIMER, value as u32);
+        }
     }
 }
 
 pub(crate) static mut LOCAL_APIC: AdvancedProgrammableInterruptController =
     AdvancedProgrammableInterruptController {
         address: 0 as *mut u8,
+        x2: false,
     };
 
 pub fn init() {
@@ -221,17 +300,43 @@ pub fn init() {
     };
     super::pic_init();
     let addr = apic_info.local_apic_address;
-    debug!("Local APIC address: {:p}", addr as usize as *const ());
-    KERNEL_MEMORY_MANAGER.lock().identity_map(
-        PhysFrame::containing_address(PhysAddr::new_truncate(addr)),
-        PageTableFlags::WRITABLE | PageTableFlags::NO_CACHE | PageTableFlags::PRESENT,
-    );
-    let apic_ptr: *mut u8 = addr as *mut u8;
-    unsafe {
-        LOCAL_APIC.address = apic_ptr;
+
+    let x2_apic = cpuid().map_or(false, |r| {
+        r.get_feature_info()
+            .map_or(false, |feature| feature.has_x2apic())
+    });
+    if x2_apic {
+        unsafe {
+            LOCAL_APIC.x2 = true;
+        }
+        debug!("System has x2 apic support, using that instead of legacy APIC");
+    } else {
+        debug!("Local APIC address: {:p}", addr as usize as *const ());
+        KERNEL_MEMORY_MANAGER.lock().identity_map(
+            PhysFrame::containing_address(PhysAddr::new_truncate(addr)),
+            PageTableFlags::WRITABLE | PageTableFlags::NO_CACHE | PageTableFlags::PRESENT,
+        );
+        let apic_ptr: *mut u8 = addr as *mut u8;
+        unsafe {
+            LOCAL_APIC.address = apic_ptr;
+        }
     }
 
+    init_ap();
+
     unsafe {
+
+    }
+}
+
+fn init_ap() {
+    unsafe {
+        if LOCAL_APIC.x2 {
+            LOCAL_APIC.write_apic_msr(
+                IA32_APIC_BASE,
+                LOCAL_APIC.read_apic_msr(IA32_APIC_BASE) | 1 << 10,
+            );
+        }
         let mut sivr = LOCAL_APIC.get_spurious_interrupt_vector();
         sivr = sivr | 0xFF;
         LOCAL_APIC.set_spurious_interrupt_vector(sivr);

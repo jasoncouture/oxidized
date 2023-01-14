@@ -24,12 +24,12 @@ pub fn init() {
     load_gdt(cpu_apic_id());
 }
 
-pub fn load_gdt(cpu: u16) {
-    GDTS[cpu as usize].init();
+pub fn load_gdt(cpu: usize) {
+    get_gdt(cpu).init();
 }
 
-pub fn get_gdt(cpu: u16) -> &'static GdtInformation {
-    &GDTS[cpu as usize]
+pub fn get_gdt(cpu: usize) -> &'static GdtInformation {
+    &GDTS[cpu]
 }
 
 pub const DOUBLE_FAULT_IST_INDEX: u16 = 0;
