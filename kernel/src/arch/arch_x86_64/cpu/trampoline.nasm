@@ -25,25 +25,19 @@ startup_ap:
     mov ds, ax
     mov es, ax
     mov ss, ax
-    mov ax, 1
     ; Load IDT
     lidt [idt]
-    lgdt [gdtr]
-    mov eax, 1
-    mov [trampoline.booting], eax
 
-    ; compute and setup the early stack, we'll need it to preserve EDX through wrmsr
-    mov ax, early_stack.end - 256
+    ; Set the stack to an invalid address for now. We'll figure out our stack later.
+    mov ax, 0
     mov sp, ax
-    mov eax, 3
-    mov [trampoline.booting], eax
     
     ; cr3 holds pointer to PML4
     mov eax, [trampoline.page_table]
     mov cr3, eax
-    mov eax, 5
-    mov [trampoline.booting], eax
+
     ; enable FPU
+
     mov eax, cr0
     ; define the bits in CR0 we want to clear
     ; cache disable (30), Not-write through (29) Task switched (3), x87 emulation (2)
@@ -52,6 +46,9 @@ startup_ap:
     and eax, ebx
     or al, 00100010b ; Set numeric error (5) monitor co-processor (1)
     mov cr0, eax
+
+    ; Initialize the FPU
+    fninit
     
     ; 9: FXSAVE/FXRSTOR
     ; 7: Page Global
@@ -67,33 +64,31 @@ startup_ap:
     ; 5: Page Address Extension
     ; 3: Debugging Extensions
     mov eax, cr4
-    or eax, 1 << 10 | 1 << 9 | 1 << 6  | 1 << 5 | 1 << 3
+    or eax, 1 << 10 | 1 << 9 | 1 << 7 | 1 << 6  | 1 << 5 | 1 << 3
     mov cr4, eax
-
-    ; initialize floating point registers
-    fninit
-    
-    mov eax, 6
-    mov [trampoline.booting], eax
 
     ; enable long mode
     mov ecx, 0xC0000080               ; Read from the EFER MSR.
     rdmsr
-    or eax, 1 << 11 | 1 << 14 | 1 << 8 
+    ; enable long mode (bit 8), and NX (bit 11)
+    ; We should really check if we can also enable bit 14 here (FFXSR)
+    ; but for now, just skip it.
+    or eax,  1 << 8 | 1 << 11
     wrmsr
     xor ecx, ecx
-    mov eax, 7
-    mov [trampoline.booting], eax
-    ; enabling paging and protection simultaneously
-    mov eax, cr0
+
+
+    ; enabling paging and protection simultaneously, along with long mode
+    ; causes us to go directly from 16 bit real mode, to 64 bit long mode.
+    ; IE: Entirely skip protected mode.
     ; 31: Paging
     ; 16: Enable write protection for ring 0
     ; 5: Numeric error
     ; 4: Extension type
     ; 1: Monitor co-processor
     ; 0: Protected Mode
+    mov eax, cr0
     or eax, 1 << 31 | 1 << 16 | 1 << 5 | 1 << 4 | 1 << 1 | 1 << 0
-    ; or eax, 1 << 31 | 1 << 16 | 1 << 0
     mov cr0, eax
     lgdt [gdtr]
     jmp gdt.kernel_code:long_mode_ap
@@ -106,10 +101,9 @@ long_mode_ap:
     mov ds, rax
     mov es, rax
     mov ss, rax
-    mov rax, 0x100
-    wbinvd
-    lock xchg [trampoline.booting], rax
-    wbinvd
+
+    xor rcx, rcx
+
     mov rax, [trampoline.stack_end]
     
     mov rsp, rax
@@ -120,7 +114,6 @@ halt_loop:
     hlt
     jmp short halt_loop;
 
-ALIGN 16
 ;temporary GDT, we'll set this in code later.
 gdt:
 .null equ $ - gdt
@@ -139,18 +132,14 @@ gdt:
     dq 0x0000920000000000             ; 64-bit data descriptor (read/write).
 
 .end equ $ - gdt
+ALIGN 4
+    dw 0
 gdtr:
     dw gdt.end - 1 ; size
     .offset dq gdt  ; offset
 ; temporary IDT, we'll also set this in code later.
-ALIGN 16
+ALIGN 4
+    db 0
 idt:
     dw 0
     dd 0
-
-ALIGN 16
-early_stack:
-times 2048 db 0
-.end equ $
-times 256 db 0
-db trampoline.ready
