@@ -1,9 +1,8 @@
-use core::{arch::asm, panic};
+use core::{panic};
 
 use acpi::InterruptModel::*;
-use raw_cpuid::CpuId;
+
 use x86::{
-    cpuid,
     msr::{
         rdmsr, wrmsr, IA32_APIC_BASE, IA32_X2APIC_APICID, IA32_X2APIC_DIV_CONF, IA32_X2APIC_EOI,
         IA32_X2APIC_ICR, IA32_X2APIC_INIT_COUNT, IA32_X2APIC_LVT_ERROR, IA32_X2APIC_LVT_TIMER,

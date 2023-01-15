@@ -1,7 +1,7 @@
-use core::{arch::asm, mem};
+use core::{arch::asm};
 
-use kernel_shared::memory::memcpy;
-use x86_64::structures::idt::{InterruptStackFrame, InterruptStackFrameValue};
+
+
 
 use crate::{debug, arch::{arch_x86_64::gdt::{INTERRUPT_STACK_SIZE, get_gdt}, get_current_cpu}};
 

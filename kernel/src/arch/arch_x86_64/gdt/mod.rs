@@ -1,10 +1,10 @@
 use alloc::vec::Vec;
-use core::alloc::Layout;
-use core::char::MAX;
+
+
 use lazy_static::lazy_static;
 use spin::Mutex;
 use x86_64::instructions::tables::load_tss;
-use x86_64::registers::segmentation::{Segment, FS, GS};
+use x86_64::registers::segmentation::{Segment};
 use x86_64::structures::gdt::{
     Descriptor, DescriptorFlags, GlobalDescriptorTable, SegmentSelector,
 };

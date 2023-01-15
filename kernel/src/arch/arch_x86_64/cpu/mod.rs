@@ -1,12 +1,12 @@
 use core::{alloc::Layout, arch::asm, cell::OnceCell};
 
-use alloc::{format, string::String, vec::Vec};
+use alloc::{format, string::String};
 use bitvec::array::BitArray;
 use bitvec::prelude::*;
 
 use iced_x86::{Decoder, DecoderOptions, Formatter, Instruction, Mnemonic, NasmFormatter};
 use spin::Mutex;
-use x86::msr::{rdmsr, wrmsr, IA32_EFER};
+use x86::msr::{rdmsr, IA32_EFER};
 use x86_64::{
     instructions::interrupts,
     registers::{control::{Cr0, Cr4, Cr4Flags, Cr0Flags}, model_specific::{EferFlags, Efer}},

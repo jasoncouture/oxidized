@@ -9,14 +9,13 @@ use spin::{self, Mutex};
 
 use x86_64::{
     set_general_handler,
-    structures::idt::{InterruptDescriptorTable, InterruptStackFrame, PageFaultErrorCode},
-    PrivilegeLevel, VirtAddr,
+    structures::idt::{InterruptDescriptorTable, InterruptStackFrame, PageFaultErrorCode}, VirtAddr,
 };
 
 use crate::{
     arch::arch_x86_64::{
         cpu,
-        gdt::{CONTEXT_SWITCH_IST_INDEX, DOUBLE_FAULT_IST_INDEX},
+        gdt::{DOUBLE_FAULT_IST_INDEX},
         syscall::{SyscallParameters, SYSCALL_TABLES},
     },
     debug, println, warn,

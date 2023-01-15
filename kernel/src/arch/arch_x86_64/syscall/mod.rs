@@ -1,9 +1,9 @@
 use core::arch::asm;
 
-use alloc::{collections::BTreeMap, vec::Vec};
+use alloc::{collections::BTreeMap};
 use lazy_static::lazy_static;
 use spin::RwLock;
-use x86::msr;
+
 
 use crate::{debug, errors::SyscallError};
 

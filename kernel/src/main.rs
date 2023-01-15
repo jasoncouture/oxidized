@@ -18,23 +18,22 @@ extern crate alloc;
 use core::ptr::NonNull;
 
 use arch::arch_x86_64::cpu::{cpu_apic_id, CPU_STACK_PAGES};
-use bootloader_api::{config::Mapping, info::MemoryRegionKind, BootInfo};
+use bootloader_api::{config::Mapping, BootInfo};
 use spin::Mutex;
-use x86_64::{software_interrupt, VirtAddr};
+use x86_64::{VirtAddr};
 
 use framebuffer::*;
 use memory::{
-    allocator::{KERNEL_FRAME_ALLOCATOR, KERNEL_HEAP_START, PAGE_SIZE},
+    allocator::{KERNEL_HEAP_START, PAGE_SIZE},
     *,
 };
-use thread::process::process_manager;
+
 
 use crate::arch::{
-    arch_x86_64::{get_cpu_brand_string, get_cpu_vendor_string},
-    enable_interrupts, get_current_cpu, wait_for_interrupt,
+    arch_x86_64::{get_cpu_brand_string, get_cpu_vendor_string}, get_current_cpu, wait_for_interrupt,
 };
 
-use core::arch::asm;
+
 
 include!(concat!(env!("OUT_DIR"), "/metadata_constants.rs"));
 pub(crate) mod arch;

@@ -5,7 +5,7 @@ use x86_64::{
     instructions::tlb, registers::control::Cr3, structures::paging::*, PhysAddr, VirtAddr,
 };
 
-use crate::{debug, println, verbose};
+use crate::{println, verbose};
 
 use self::allocator::{init_frame_allocator, init_kernel_heap, KERNEL_FRAME_ALLOCATOR, PAGE_SIZE};
 
