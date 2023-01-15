@@ -26,6 +26,7 @@ raw-cpuid = "10.2.0"
 x86 = { version = "0.52", default-features = false }
 pic8259 = "0.10"
 acpi = "4.1"
+iced-x86 = { version = "1.18.0", default-features = false, features = ["no_std", "decoder", "nasm", "intel"] }
 
 
 [build-dependencies]

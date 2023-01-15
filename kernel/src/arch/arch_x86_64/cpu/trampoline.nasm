@@ -4,24 +4,13 @@ ORG 0x0000
 SECTION .text
 USE16
 
-trampoline:
-    jmp short startup_ap
-    times 8 - ($ - trampoline) nop
-    .ready: dq 0
-    .cpu_id: dq 0
-    .page_table: dq 0
-    .stack_start: dq 0
-    .stack_end: dq 0
-    .code: dq 0
-    .booting: dq 0
-ALIGN 16
-ALIGN 4
-startup_ap:
+nop
+ALIGN 32, nop
+entry:
     cld
     cli
     ; zero our code segment, the assembler thinks we're in CS 0, so make it so.
     xor ax, ax
-    mov cs, ax
     mov ds, ax
     mov es, ax
     mov ss, ax
@@ -93,7 +82,7 @@ startup_ap:
     lgdt [gdtr]
     jmp gdt.kernel_code:long_mode_ap
 
-align 16
+ALIGN 8, nop
 
 USE64
 long_mode_ap:
@@ -132,14 +121,20 @@ gdt:
     dq 0x0000920000000000             ; 64-bit data descriptor (read/write).
 
 .end equ $ - gdt
-ALIGN 4
-    dw 0
+ALIGN 4, db 0
 gdtr:
     dw gdt.end - 1 ; size
     .offset dq gdt  ; offset
 ; temporary IDT, we'll also set this in code later.
-ALIGN 4
-    db 0
+ALIGN 4, db 0
 idt:
     dw 0
     dd 0
+tiny_stack: times 128 db 0
+    .end: db 0
+ALIGN 8, nop
+trampoline:
+    .page_table: dq 0xFFFFFFFFFFFFFFFF ; -3
+    .stack_end: dq 0xFFFFFFFFFFFFFFFF ; -2
+    .code: dq 0xFFFFFFFFFFFFFFFF ; -1
+    .base: dq 0xFFFFFFFFFFFFFFFF ; 0

@@ -71,19 +71,34 @@ impl KernelAllocator {
 #[global_allocator]
 static mut ALLOCATOR: KernelAllocator = KernelAllocator::empty();
 
+impl KernelAllocator {
+    pub fn get_heap_size(&self) -> usize {
+        self.0.lock().size()
+    }
+
+    pub fn calculate_heap_expansion(&self, layout: Layout) -> usize {
+        (self.get_heap_size() / 4).max(((layout.align() + layout.size()) * 3) / 2) // increase by a minimum of 25%, or 1.5x requested, whichever is larger.
+    }
+}
+
 unsafe impl GlobalAlloc for KernelAllocator {
     unsafe fn alloc(&self, layout: core::alloc::Layout) -> *mut u8 {
         let ret = self.0.alloc(layout);
         if ret as usize != 0 {
             return ret;
         }
-        let needed_size = layout.size() + layout.align();
+        let needed_size = self.calculate_heap_expansion(layout);
         self.extend_heap(needed_size);
-        self.0.alloc(layout)
+        let ret = self.0.alloc(layout);
+        debug!(
+            "Extended heap by {} bytes to accomodate layout {:?}",
+            needed_size, layout
+        );
+        ret
     }
 
     unsafe fn dealloc(&self, ptr: *mut u8, layout: core::alloc::Layout) {
-        self.0.dealloc(ptr, layout)
+        self.0.dealloc(ptr, layout);
     }
 }
 
@@ -199,15 +214,13 @@ impl BootInfoFrameAllocator {
     }
 
     pub fn allocate_conventional_memory_frame(&mut self) -> Option<PhysFrame<Size4KiB>> {
-        let mut current_frame = PhysFrame::<Size4KiB>::containing_address(PhysAddr::new(0));
         for frame in self
             .usable_frames()
-            .filter(|f| f.start_address().as_u64() < 0x100000)
+            .filter(|f| f.start_address().as_u64() < 0x100000 && f.start_address().as_u64() > 0)
         {
             let frame_address = frame.start_address().as_u64() as usize;
             // Same as / 4096, but faster.
             let page = Self::get_page(frame_address);
-            current_frame += 1;
             if !self.used_pages[page] {
                 self.used_pages.set(page, true);
                 println!("Allocated conventional page: {}", page);
@@ -289,7 +302,7 @@ pub fn init_kernel_heap() -> Result<(), MapToError<Size4KiB>> {
 }
 
 pub fn kmalloc(layout: Layout) -> *mut u8 {
-    unsafe { ALLOCATOR.alloc_zeroed(layout) }
+    unsafe { ALLOCATOR.alloc(layout) }
 }
 
 pub fn kfree(ptr: *mut u8, layout: Layout) {

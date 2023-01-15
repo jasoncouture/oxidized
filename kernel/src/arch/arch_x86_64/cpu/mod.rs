@@ -1,19 +1,26 @@
-use core::{arch::asm, cell::OnceCell};
+use core::{alloc::Layout, arch::asm, cell::OnceCell};
 
-use bitvec::prelude::*;
+use alloc::{format, string::String, vec::Vec};
 use bitvec::array::BitArray;
+use bitvec::prelude::*;
 
+use iced_x86::{Decoder, DecoderOptions, Formatter, Instruction, Mnemonic, NasmFormatter};
 use spin::Mutex;
+use x86::msr::{rdmsr, wrmsr, IA32_EFER};
 use x86_64::{
     instructions::interrupts,
+    registers::{control::{Cr0, Cr4, Cr4Flags, Cr0Flags}, model_specific::{EferFlags, Efer}},
     structures::paging::{PageTableFlags, PhysFrame},
     PhysAddr,
 };
 
 use kernel_shared::memory::memcpy;
 
-use crate::arch::arch_x86_64::{apic, gdt, idt};
 use crate::kernel_cpu_main;
+use crate::{
+    arch::arch_x86_64::{apic, gdt, idt},
+    memory::allocator::kmalloc,
+};
 use crate::{
     debug,
     memory::{
@@ -24,32 +31,26 @@ use crate::{
 
 use super::{acpi::ACPI_TABLES, apic::LOCAL_APIC};
 
-const CPU_STACK_PAGES: usize = 16;
+const CPU_STACK_PAGES: usize = 512;
 
 static BOOTSTRAP_CODE: &[u8] = include_bytes!(concat!(
     env!("OUT_DIR"),
     "/src/arch/arch_x86_64/cpu/trampoline.bin"
 ));
 
+static mut BSP_EFER: u64 = 0;
+static mut BSP_CR0: u64 = 0;
+static mut BSP_CR4: u64 = 0;
+
 /*
 trampoline:
-    jmp short startup_ap
-    times 8 - ($ - trampoline) nop
-    .ready: dq 0 ;0
-    .cpu_id: dq 0 ;1
-    .page_table: dq 0 ;2
-    .stack_start: dq 0 ;3
-    .stack_end: dq 0 ;4
-    .code: dq 0 ;5
-    .booting: dq 0 ;6
+    .page_table: dq 0 ; -2
+    .stack_end: dq 0 ; -1
+    .code: dq 0 ; 0
 */
-const BASE_OFFSET: isize = 1;
-const CPU_ID_OFFSET: isize = 1;
-const PAGE_TABLE_OFFSET: isize = 2;
-const STACK_END_OFFSET: isize = 4;
-const ENTRY_ADDRESS_OFFSET: isize = 5;
-const BASE_OFFSET_OFFSET: isize = 6;
-const BOOTING_OFFSET: isize = 7;
+const PAGE_TABLE_OFFSET: isize = -3;
+const STACK_END_OFFSET: isize = -2;
+const ENTRY_ADDRESS_OFFSET: isize = -1;
 
 #[repr(C)]
 pub struct InterProcessorInterruptPayload {
@@ -64,10 +65,6 @@ impl InterProcessorInterruptPayload {
         ret
     }
 
-    fn set_base_offset(&self) {
-        self.set_value(BASE_OFFSET_OFFSET, self.payload as u64);
-    }
-
     pub fn as_ptr(&self) -> *const u8 {
         self.payload as *const u8
     }
@@ -76,7 +73,6 @@ impl InterProcessorInterruptPayload {
         unsafe {
             memcpy(self.payload as *mut u8, data.as_ptr(), data.len());
         };
-        self.set_base_offset();
     }
 
     pub fn set_stack(&self, stack: *const u8, stack_length: usize) {
@@ -87,43 +83,71 @@ impl InterProcessorInterruptPayload {
                 stack, stack_end
             );
         }
-        unsafe {
-            self.set_value(STACK_END_OFFSET, (stack as u64) + stack_length as u64);
+        self.set_value(STACK_END_OFFSET, (stack as u64) + stack_length as u64);
+    }
+
+    fn dump_assembly(&self) {
+        let mut buffer = [0u8; 4096];
+        const HEXBYTES_COLUMN_BYTE_LENGTH: usize = 10;
+        unsafe { memcpy(buffer.as_mut_ptr(), self.as_ptr(), BOOTSTRAP_CODE.len()) };
+        let buffer = &buffer[0..BOOTSTRAP_CODE.len()];
+        let mut decoder = Decoder::with_ip(16, buffer, 0, DecoderOptions::NONE);
+
+        // Formatters: Masm*, Nasm*, Gas* (AT&T) and Intel* (XED).
+        // For fastest code, see `SpecializedFormatter` which is ~3.3x faster. Use it if formatting
+        // speed is more important than being able to re-assemble formatted instructions.
+        let mut formatter = NasmFormatter::new();
+
+        // Change some options, there are many more
+        formatter.options_mut().set_digit_separator("`");
+        formatter.options_mut().set_first_operand_char_index(10);
+
+        // String implements FormatterOutput
+        let mut output = String::new();
+
+        let mut instruction = Instruction::default();
+
+        while decoder.can_decode() {
+            // There's also a decode() method that returns an instruction but that also
+            // means it copies an instruction (40 bytes):
+            //     instruction = decoder.decode();
+            decoder.decode_out(&mut instruction);
+            // The first jump we hit in 16 bit mode, is the jump to 64 bit mode.
+            // Update the decoder accordingly.
+            if instruction.code().mnemonic() == Mnemonic::Jmp && decoder.bitness() == 16 {
+                decoder = Decoder::with_ip(64, buffer, 0, DecoderOptions::NONE);
+                let rip = instruction.ip() as usize + instruction.len();
+                decoder.set_position(rip).unwrap();
+                decoder.set_ip(rip as u64);
+            }
+
+            // Format the instruction ("disassemble" it)
+            output.clear();
+            formatter.format(&instruction, &mut output);
+            let mut final_output: String = String::new();
+            final_output.push_str(format!("{:016X}: ", instruction.ip()).as_str());
+            let start_index = (instruction.ip()) as usize;
+            let instr_bytes = &buffer[start_index..start_index + instruction.len()];
+            for b in instr_bytes.iter() {
+                final_output.push_str(format!("{:02X}", b).as_str());
+            }
+            if instr_bytes.len() < HEXBYTES_COLUMN_BYTE_LENGTH {
+                for _ in 0..HEXBYTES_COLUMN_BYTE_LENGTH - instr_bytes.len() {
+                    final_output.push_str("  ");
+                }
+            }
+            final_output.push_str(format!(" {}", output).as_str());
+            debug!("{}", final_output);
+            //debug!("{:016X} {}", instruction.ip(), output);
         }
     }
 
     fn set_value(&self, index: isize, val: u64) {
         unsafe {
-            let target = self.payload.offset(index + BASE_OFFSET);
-            asm! (
-                "wbinvd",
-                "lock xchg [{}], {}",
-                "wbinvd",
-                in(reg) target,
-                in(reg) val
-            );
-
-            //debug!("{:?}", core::slice::from_raw_parts(self.payload.offset(1), 16));
+            let end = (self.payload as *mut u8).offset(BOOTSTRAP_CODE.len() as isize) as *mut u64;
+            let target = end.offset(-1).offset(index);
+            target.write_volatile(val);
         }
-    }
-
-    fn get_value(&self, index: isize) -> u64 {
-        unsafe {
-            let target = self.payload.offset(index + BASE_OFFSET);
-            let mut val: u64 = 0;
-            asm! (
-                "wbinvd",
-                "lock xadd [{}], {}",
-                "wbinvd",
-                in(reg) target,
-                inout(reg) val
-            );
-            val
-        }
-    }
-
-    pub fn set_cpu_id(&self, cpu_id: u64) {
-        self.set_value(CPU_ID_OFFSET, cpu_id);
     }
 
     pub fn set_page_table(&self, page_table: u64) {
@@ -138,47 +162,26 @@ impl InterProcessorInterruptPayload {
         (self.as_ptr() as usize >> 12) as u16 & 0x00FFu16
     }
 
-    pub fn get_cpu_id(&self) -> usize {
-        self.get_value(CPU_ID_OFFSET) as usize
-    }
-
-    pub fn is_booting(&self) -> bool {
-        let mutex = get_booting_cpu_status_bits();
-        let status_bits = mutex.lock();
-        let cpu_id = self.get_cpu_id();
-        let result = match status_bits.get(cpu_id as usize).as_deref() {
-            Some(v) => *v,
-            None => false,
-        };
-        result
-    }
-
-    fn clear_booting_flag(&self) {
-        self.set_value(BOOTING_OFFSET, 0)
-    }
-
-    pub fn is_ready(&self) -> bool {
+    pub fn is_ready(&self, cpu_id: usize) -> bool {
         let mutex = get_online_cpu_status_bits();
         let status_bits = mutex.lock();
-        let cpu_id = self.get_cpu_id();
-        let result = match status_bits.get(cpu_id as usize).as_deref() {
+        let cpu_id = cpu_id;
+        let result = match status_bits.get(cpu_id).as_deref() {
             Some(v) => *v,
             None => false,
         };
         result
     }
 
-    pub fn boot(&self) {
-        core::hint::black_box(self);
+    pub fn boot(&self, cpu_id: usize) {
         let segment = self.get_code_segment() as u8;
-        let cpu_id = self.get_cpu_id();
         unsafe {
-            self.clear_booting_flag();
+            //self.dump_assembly();
             LOCAL_APIC.send_ipi_init(cpu_id);
             debug!("IPI INIT  -> ID: {}", cpu_id);
             LOCAL_APIC.send_ipi_start(cpu_id, segment);
             debug!("IPI START -> ID: {} CS: {}", cpu_id, segment);
-            while !self.is_ready() {
+            while !self.is_ready(cpu_id) {
                 core::hint::spin_loop();
             }
 
@@ -233,10 +236,6 @@ pub fn start_additional_cpus() {
         }
     }
 
-    unsafe {
-        KERNEL_FRAME_ALLOCATOR.free(frame.start_address());
-    }
-
     // All CPUs are online. Let's free our page now.
     // TODO: Implement ability to free virtual pages, so we can free the underlying frame.
     //KERNEL_MEMORY_MANAGER.lock().free_page(VirtAddr::new(frame.start_address().as_u64()));
@@ -247,20 +246,12 @@ fn start_cpu(cpu_id: usize, ipi_payload: &InterProcessorInterruptPayload) {
     if cpu_id == cpu_apic_id() as usize {
         panic!("Attempted to start CPU that is currently executing code");
     }
-    setup_trampoline(cpu_id, &ipi_payload);
-    ipi_payload.boot();
+    setup_trampoline(&ipi_payload);
+    ipi_payload.boot(cpu_id);
 }
 
 pub fn create_ap_stack(size: usize) -> *mut u8 {
-    let pages = (size / PAGE_SIZE) + 1;
-    let mut locked_manager = KERNEL_MEMORY_MANAGER.lock();
-    locked_manager
-        .allocate_contigious_address_range(
-            pages,
-            None,
-            PageTableFlags::WRITABLE | PageTableFlags::PRESENT | PageTableFlags::NO_EXECUTE,
-        )
-        .expect("Unable to allocate CPU Stack space!")
+    kmalloc(Layout::from_size_align(size, 16).unwrap())
 }
 
 pub fn setup_trampoline_common_parameters(ipi_code: &InterProcessorInterruptPayload) {
@@ -272,19 +263,11 @@ pub fn setup_trampoline_common_parameters(ipi_code: &InterProcessorInterruptPayl
         );
         ipi_code.set_page_table(page_table);
         ipi_code.set_entry_point(ap_entry as *const ());
-    }
-}
 
-#[derive(Debug)]
-#[repr(C, align(8))]
-pub struct TrampolineParameters {
-    reserved: usize,
-    ready: usize,
-    cpu_id: usize,
-    page_table: usize,
-    stack_start: usize,
-    stack_end: usize,
-    code: usize,
+        BSP_EFER = rdmsr(IA32_EFER);
+        BSP_CR0 = Cr0::read_raw();
+        BSP_CR4 = Cr4::read_raw();
+    }
 }
 
 static mut CPU_ONLINE_STATUS_BITS: OnceCell<Mutex<BitArray>> = OnceCell::new();
@@ -304,8 +287,7 @@ pub fn get_booting_cpu_status_bits() -> &'static mut Mutex<BitArray> {
     }
 }
 
-pub fn setup_trampoline(cpu_id: usize, ipi_payload: &InterProcessorInterruptPayload) {
-    ipi_payload.set_cpu_id(cpu_id as u64);
+pub fn setup_trampoline(ipi_payload: &InterProcessorInterruptPayload) {
     let stack_length = CPU_STACK_PAGES * PAGE_SIZE;
     let stack = create_ap_stack(stack_length);
     ipi_payload.set_stack(stack, stack_length);
@@ -327,20 +309,28 @@ fn mark_cpu_booting() {
 }
 
 pub unsafe extern "C" fn ap_entry() -> ! {
+    // Make sure interrupts are disabled.
+    interrupts::disable();
     mark_cpu_booting();
-    debug!("AP booting.");
+    set_control_regs();
     gdt::init();
     idt::init();
-    unsafe {
-        apic::init_ap();
-    }
-    mark_cpu_online();
-    debug!("AP active!");
-    crate::arch::arch_x86_64::apic::init_ap();
-    ap_main()
+    apic::init_ap();
+    ap_main();
+}
+
+unsafe fn set_control_regs() {
+    // Set EFER, CR0, and CR4 to match the BSP.
+    let cr4 = Cr4Flags::from_bits_truncate(BSP_CR4);
+    let cr0 = Cr0Flags::from_bits_truncate(BSP_CR0);
+    let efer = EferFlags::from_bits_truncate(BSP_EFER);
+    Cr4::write(cr4);
+    Efer::write(efer);
+    Cr0::write(cr0);
 }
 
 pub fn ap_main() -> ! {
+    mark_cpu_online();
     interrupts::enable();
     kernel_cpu_main();
 }

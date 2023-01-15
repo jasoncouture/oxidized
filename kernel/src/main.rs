@@ -18,6 +18,7 @@ use core::ptr::NonNull;
 
 use arch::arch_x86_64::cpu::cpu_apic_id;
 use bootloader_api::{config::Mapping, info::MemoryRegionKind, BootInfo};
+use spin::Mutex;
 use x86_64::{software_interrupt, VirtAddr};
 
 use framebuffer::*;
@@ -49,7 +50,7 @@ pub mod thread;
 const CONFIG: bootloader_api::BootloaderConfig = {
     let mut config = bootloader_api::BootloaderConfig::new_default();
     config.mappings.aslr = true;
-    config.kernel_stack_size = 1024 * 256; // 256k
+    config.kernel_stack_size = 512 * PAGE_SIZE as u64;
     config.mappings.physical_memory = Some(Mapping::Dynamic);
     config.mappings.dynamic_range_end = Some(KERNEL_HEAP_START as u64);
     config.mappings.dynamic_range_start = Some((PAGE_SIZE * 100) as u64); // Reserve the first 1mb of virtual address space. Please.
@@ -116,21 +117,43 @@ fn kernel_main() {
     );
     verbose!("CPU Vendor: {}", get_cpu_vendor_string());
     verbose!("CPU Brand : {}", get_cpu_brand_string());
+    set_kernel_ready();
     // Join the APIs in their halt loop glory.
     kernel_cpu_main();
 }
 
 fn kernel_cpu_main() -> ! {
     // TODO: Enter the scheduler here.
+    if !kernel_ready() {
+        debug!("Waiting for BSP to mark the kernel ready.");
+        while !kernel_ready() {
+            core::hint::spin_loop();
+        }
+    }
     let cpu = cpu_apic_id();
     debug!("Entered kernel_cpu_main on CPU #{}", cpu);
-    enable_interrupts();
     loop {
         // let ticks = get_timer_ticks();
         // debug!("Tick: {}", ticks);
         wait_for_interrupt();
     }
 }
+
+fn set_kernel_ready() {
+    unsafe {
+        let val = READY_SIGNAL.get_mut();
+        *val = true;
+    }
+}
+
+fn kernel_ready() -> bool {
+    unsafe {
+        let lock = READY_SIGNAL.lock();
+        *lock
+    }
+}
+
+static mut READY_SIGNAL: Mutex<bool> = Mutex::new(false);
 
 fn create_kernel_process() {
     let manager = process_manager();
