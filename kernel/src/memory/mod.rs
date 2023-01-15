@@ -40,47 +40,52 @@ impl MemoryManager {
                 .align_down(PAGE_SIZE as u64)
         {
             start_page = earliest_address.unwrap().align_down(PAGE_SIZE as u64);
+            self.next_free_page = start_page;
         }
         let mut start_page = Page::<Size4KiB>::containing_address(start_page);
         let page_table = self.page_table.as_mut().unwrap();
-        loop {
-            let end_page = start_page + pages as u64;
-            let mut start_over = false;
-            for page in Page::<Size4KiB>::range_inclusive(start_page, end_page) {
-                if let Ok(_) = page_table.translate_page(page) {
-                    let next_start = start_page.start_address() + PAGE_SIZE as u64;
-                    if start_page == page {
-                        self.next_free_page = next_start;
-                    }
-                    start_page = Page::containing_address(next_start);
-                    start_over = true;
-                    break;
-                }
+        let mut index: usize = 0;
+        while index < pages {
+            let current_page = start_page + index as u64;
+            if current_page.start_address()
+                < earliest_address
+                    .unwrap_or(start_page.start_address())
+                    .align_down(PAGE_SIZE as u64)
+            {
+                start_page = current_page + 1;
+                index = 0;
+            } else if let Ok(_) = page_table.translate_page(current_page) {
+                start_page = current_page + 1;
+                index = 0;
+            } else {
+                index += 1;
             }
-
-            if start_over {
-                continue;
-            }
-            for page in Page::<Size4KiB>::range_inclusive(start_page, end_page) {
-                let frame = unsafe { KERNEL_FRAME_ALLOCATOR.allocate_frame() };
-                if frame.is_none() {
-                    return None;
-                }
-                let frame = frame.unwrap();
-                let result =
-                    unsafe { page_table.map_to(page, frame, flags, &mut KERNEL_FRAME_ALLOCATOR) };
-                let result = result.expect("Failed to map virtual memory!");
-                if pages < 10 {
-                    result.flush();
-                } else {
-                    result.ignore();
-                }
-            }
-            if pages >= 10 {
-                tlb::flush_all();
-            }
-            return Some(start_page.start_address().as_mut_ptr());
         }
+
+        self.next_free_page = (start_page + index as u64).start_address();
+        for i in 0..index {
+            let frame = unsafe { KERNEL_FRAME_ALLOCATOR.allocate_frame()? };
+            let flush = unsafe {
+                page_table.map_to(
+                    start_page + i as u64,
+                    frame,
+                    flags,
+                    &mut KERNEL_FRAME_ALLOCATOR,
+                )
+            }
+            .expect("Failed to map virtual memory");
+            if pages == 1 {
+                flush.flush();
+            } else {
+                flush.ignore();
+            }
+        }
+
+        if pages > 1 {
+            tlb::flush_all();
+        }
+
+        return Some(start_page.start_address().as_mut_ptr());
     }
 
     pub fn identity_map(&mut self, frame: PhysFrame<Size4KiB>, flags: PageTableFlags) {
@@ -132,17 +137,8 @@ pub(crate) fn initialize_virtual_memory(
         println!("Initializing frame allocator");
         // and boot up the frame allocator
         init_frame_allocator(memory_map);
-        println!("Initializing heap");
         // And then the heap.
         init_kernel_heap().expect("Failed to initialize kernel heap");
-        debug!("Memory map");
-        debug!("Start - End - Kind");
-        for region in memory_map.iter() {
-            debug!(
-                "{:p} - {:p} - {:?}",
-                region.start as *const u8, region.end as *const u8, region.kind
-            );
-        }
         verbose!("Heap and virtual memory initialized.");
     }
 }

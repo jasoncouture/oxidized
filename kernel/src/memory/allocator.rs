@@ -90,10 +90,6 @@ unsafe impl GlobalAlloc for KernelAllocator {
         let needed_size = self.calculate_heap_expansion(layout);
         self.extend_heap(needed_size);
         let ret = self.0.alloc(layout);
-        debug!(
-            "Extended heap by {} bytes to accomodate layout {:?}",
-            needed_size, layout
-        );
         ret
     }
 
@@ -104,7 +100,7 @@ unsafe impl GlobalAlloc for KernelAllocator {
 
 pub const PAGE_SIZE: usize = 4096;
 pub const KERNEL_HEAP_START: usize = 0x_F000_0000_0000;
-pub const KERNEL_HEAP_PAGES: usize = 1;
+pub const KERNEL_HEAP_PAGES: usize = 128;
 pub const ONE_MEGABYTE: usize = 1024 * 1024;
 pub const ONE_GIGABTYE: usize = ONE_MEGABYTE * 1024;
 pub const ONE_TERABYTE: usize = ONE_GIGABTYE * 1024;

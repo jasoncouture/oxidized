@@ -1,4 +1,5 @@
 use core::{
+    arch::asm,
     panic,
     ptr::{read_volatile, write_volatile},
 };
@@ -8,13 +9,15 @@ use spin::{self, Mutex};
 
 use x86_64::{
     set_general_handler,
-    structures::idt::{InterruptDescriptorTable, InterruptStackFrame, PageFaultErrorCode}, VirtAddr, PrivilegeLevel,
+    structures::idt::{InterruptDescriptorTable, InterruptStackFrame, PageFaultErrorCode},
+    PrivilegeLevel, VirtAddr,
 };
 
 use crate::{
     arch::arch_x86_64::{
         cpu,
         gdt::{CONTEXT_SWITCH_IST_INDEX, DOUBLE_FAULT_IST_INDEX},
+        syscall::{SyscallParameters, SYSCALL_TABLES},
     },
     debug, println, warn,
 };
@@ -219,15 +222,33 @@ pub fn get_timer_ticks_hardware() -> usize {
 }
 
 type SoftwareInterruptHandler = fn(InterruptStackFrame, u8, Option<u64>);
+
 fn legacy_syscall_interrupt_handler(
     stack_frame: InterruptStackFrame,
     index: u8,
     _error_code: Option<u64>,
 ) {
-    debug!(
-        "Legacy syscall via interrupt ISR: {:#02x}, from RIP: {:#016x}",
-        index, stack_frame.instruction_pointer
-    );
+    unsafe {
+        let rax: usize;
+        asm!(
+            "nop",
+            out("rax") rax, options(pure, nomem)
+        );
+        debug!(
+            "Legacy syscall via interrupt ISR: {:#02x}, from RIP: {:#016x}",
+            index, stack_frame.instruction_pointer
+        );
+        // TODO: Load personality ID from context data.
+        let table = SYSCALL_TABLES.read().get_personality(usize::MAX).unwrap();
+        let parameters = SyscallParameters::new(rax);
+
+        let callback = table.try_get_syscall(&parameters);
+        if let Ok(cb) = callback {
+            cb(&parameters);
+        } else {
+            // TODO: Reap process.
+        }
+    }
 }
 lazy_static! {
     static ref SOFTWARE_HANDLERS: Mutex<[Option<SoftwareInterruptHandler>; 224]> =

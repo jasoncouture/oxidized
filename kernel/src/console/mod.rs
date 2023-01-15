@@ -24,16 +24,19 @@ lazy_static! {
 }
 
 pub(crate) fn _print(args: fmt::Arguments) {
-    let locked_console = CONSOLE.lock();
-    for c in args.to_string().chars() {
-        if !c.is_ascii() {
-            continue;
+    {
+        let locked_console = CONSOLE.lock();
+        for c in args.to_string().chars() {
+            if !c.is_ascii() {
+                continue;
+            }
+            match c {
+                '\n' => locked_console.new_line(),
+                _ => locked_console.put_char(c),
+            };
         }
-        match c {
-            '\n' => locked_console.new_line(),
-            _ => locked_console.put_char(c),
-        };
     }
+    swap_framebuffer();
 }
 
 #[macro_export]
@@ -50,9 +53,10 @@ macro_rules! console_println {
 impl Console {
     pub fn new_line(self: &Self) {
         let locked = FRAME_BUFFER.lock();
-        let frame_buffer = locked.get_framebuffer().unwrap();
-        let glyph = self.font.glyph(b' ');
-        self.new_line_internal(frame_buffer, &glyph);
+        if let Some(frame_buffer) = locked.get_framebuffer() {
+            let glyph = self.font.glyph(b' ');
+            self.new_line_internal(frame_buffer, &glyph);
+        }
     }
     fn new_line_internal(self: &Self, frame_buffer: &mut KernelFramebuffer, glyph: &Glyph) {
         frame_buffer.shift_up(glyph.height());
@@ -67,13 +71,13 @@ impl Console {
             return;
         }
         let frame_buffer = frame_buffer_option.unwrap();
-        let platform_framebuffer_option = frame_buffer.frame_buffer.as_ref();
-        if platform_framebuffer_option.is_none() {
+        let info = frame_buffer.info();
+        if info.is_none() {
             return;
         }
-        let platform_framebuffer = platform_framebuffer_option.unwrap();
 
-        let info = platform_framebuffer.info();
+        let info = info.unwrap();
+
         let y_offset = info.height - glyph.height();
 
         if x_offset >= (info.width - glyph.width()) {

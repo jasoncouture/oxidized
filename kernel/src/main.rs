@@ -12,6 +12,7 @@
 #![feature(pointer_byte_offsets)]
 #![feature(core_intrinsics)]
 #![feature(pointer_is_aligned)]
+#![feature(error_in_core)]
 extern crate alloc;
 
 use core::ptr::NonNull;
@@ -46,6 +47,7 @@ mod memory;
 mod panic;
 pub(crate) mod serial;
 pub mod thread;
+pub mod errors;
 
 const CONFIG: bootloader_api::BootloaderConfig = {
     let mut config = bootloader_api::BootloaderConfig::new_default();
@@ -71,7 +73,7 @@ fn kernel_boot(boot_info: &'static mut bootloader_api::BootInfo) -> ! {
         hardware_init(BOOT_INFO.unwrap().as_mut());
     }
     kernel_main();
-    panic!("Kernel exited, this should not happen!");
+    unreachable!();
 }
 
 #[inline]
@@ -86,7 +88,6 @@ fn early_init(boot_info: &'static mut BootInfo) {
         ),
         &boot_info.memory_regions,
     );
-    debug!("Setting up framebuffer");
     let fb_option: Option<&'static mut bootloader_api::info::FrameBuffer> =
         boot_info.framebuffer.as_mut();
     init_framebuffer(fb_option);
@@ -104,7 +105,7 @@ fn clear() {
     frame_buffer.clear(&Color::black());
 }
 
-fn kernel_main() {
+fn kernel_main() -> ! {
     let status_bits = arch::arch_x86_64::cpu::get_online_cpu_status_bits();
     {
         let online_cpus = status_bits.lock().iter().filter(|b| *b == true).count();
@@ -154,13 +155,3 @@ fn kernel_ready() -> bool {
 }
 
 static mut READY_SIGNAL: Mutex<bool> = Mutex::new(false);
-
-fn create_kernel_process() {
-    let manager = process_manager();
-    let process = manager.create_process();
-    debug!(
-        "Created kernel process \"{}\" with control group: {}",
-        process.get_id(),
-        process.get_control_group()
-    );
-}

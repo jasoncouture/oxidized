@@ -1,13 +1,15 @@
 extern crate alloc;
 
 use alloc::boxed::Box;
-use core::cmp::min;
+use core::{alloc::Layout, cmp::min, slice};
 
 use bootloader_api::info::*;
 use lazy_static::*;
 use spin::Mutex;
 
 use kernel_shared::memory::*;
+
+use crate::memory::allocator::kmalloc;
 
 #[derive(Debug, Clone, Copy)]
 pub(crate) struct Point(pub usize, pub usize);
@@ -45,16 +47,44 @@ pub(crate) trait Drawable {
     );
 }
 
-static mut FRAME_BUFFER_INTERNAL: KernelFramebuffer = KernelFramebuffer { frame_buffer: None };
+static mut FRAME_BUFFER_INTERNAL: KernelFramebuffer = KernelFramebuffer {
+    info: None,
+    buffer: 0 as *mut u8,
+    shadow_buffer: 0 as *mut u8,
+    surface: 0 as *mut u8,
+};
 pub struct FrameBufferWrapper {}
 impl FrameBufferWrapper {
-    pub(crate) fn get_framebuffer(self: &Self) -> Option<&mut KernelFramebuffer> {
-        unsafe { Some(&mut FRAME_BUFFER_INTERNAL) }
+    pub(crate) fn get_framebuffer(self: &Self) -> Option<&'static mut KernelFramebuffer> {
+        unsafe {
+            if FRAME_BUFFER_INTERNAL.info.is_some() {
+                unsafe { Some(&mut FRAME_BUFFER_INTERNAL) }
+            } else {
+                None
+            }
+        }
     }
 
     pub(crate) fn set_framebuffer(self: &Self, frame_buffer: Option<&'static mut FrameBuffer>) {
         unsafe {
-            FRAME_BUFFER_INTERNAL.frame_buffer = frame_buffer;
+            if let Some(fb) = frame_buffer {
+                FRAME_BUFFER_INTERNAL.info = Some(fb.info());
+                FRAME_BUFFER_INTERNAL.buffer = fb.buffer_mut().as_mut_ptr();
+                let layout = Layout::from_size_align(fb.info().byte_len, 16).unwrap();
+                FRAME_BUFFER_INTERNAL.shadow_buffer = kmalloc(layout);
+                FRAME_BUFFER_INTERNAL.surface = kmalloc(layout);
+
+                memcpy(
+                    FRAME_BUFFER_INTERNAL.shadow_buffer,
+                    FRAME_BUFFER_INTERNAL.buffer,
+                    layout.size(),
+                );
+                memcpy(
+                    FRAME_BUFFER_INTERNAL.surface,
+                    FRAME_BUFFER_INTERNAL.shadow_buffer,
+                    layout.size(),
+                );
+            }
         }
     }
 }
@@ -63,12 +93,22 @@ lazy_static! {
     pub static ref FRAME_BUFFER: Mutex<FrameBufferWrapper> = Mutex::new(FrameBufferWrapper {});
 }
 
+pub fn swap_framebuffer() {
+    let fb = FRAME_BUFFER.lock();
+    if let Some(kfb) = fb.get_framebuffer() {
+        kfb.swap_buffer();
+    }
+}
+
 pub fn init_framebuffer(frame_buffer: Option<&'static mut FrameBuffer>) {
     FRAME_BUFFER.lock().set_framebuffer(frame_buffer);
 }
 
 pub(crate) struct KernelFramebuffer {
-    pub(crate) frame_buffer: Option<&'static mut FrameBuffer>,
+    info: Option<FrameBufferInfo>,
+    buffer: *mut u8,
+    shadow_buffer: *mut u8,
+    surface: *mut u8,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -142,30 +182,78 @@ impl KernelFramebuffer {
         }
     }
 
+    pub (crate) fn info(&self) -> Option<FrameBufferInfo> {
+        unsafe { FRAME_BUFFER_INTERNAL.info }
+    }
+
+    pub (crate) fn swap_buffer(&self) {
+        let info = self.info.unwrap();
+        unsafe {
+            if info.byte_len % 8 == 0 {
+                let len = info.byte_len / 8;
+                let buffer = slice::from_raw_parts_mut(self.buffer as *mut u64, len);
+                let shadow = slice::from_raw_parts_mut(self.shadow_buffer as *mut u64, len);
+                let surface = slice::from_raw_parts_mut(self.surface as *mut u64, len);
+                for i in 0..surface.len() {
+                    if shadow[i] != surface[i] {
+                        buffer[i] = surface[i];
+                        shadow[i] = surface[i];
+                    }
+                }
+            } else if info.byte_len % 4 == 0 {
+                let len = info.byte_len / 4;
+                let buffer = slice::from_raw_parts_mut(self.buffer as *mut u32, len);
+                let shadow = slice::from_raw_parts_mut(self.shadow_buffer as *mut u32, len);
+                let surface = slice::from_raw_parts_mut(self.surface as *mut u32, len);
+                for i in 0..surface.len() {
+                    if shadow[i] != surface[i] {
+                        buffer[i] = surface[i];
+                        shadow[i] = surface[i];
+                    }
+                }
+            } else {
+                let buffer = slice::from_raw_parts_mut(self.buffer, info.byte_len);
+                let shadow = slice::from_raw_parts_mut(self.shadow_buffer, info.byte_len);
+                let surface = slice::from_raw_parts_mut(self.surface, info.byte_len);
+                for i in 0..surface.len() {
+                    if shadow[i] != surface[i] {
+                        buffer[i] = surface[i];
+                        shadow[i] = surface[i];
+                    }
+                }
+            }
+        }
+    }
+
     fn get_buffer_start_offset(x: usize, y: usize, frame_buffer_info: FrameBufferInfo) -> usize {
         let y_start = (y % frame_buffer_info.height) * frame_buffer_info.stride;
         let x_start = x % frame_buffer_info.width;
         (x_start + y_start) * frame_buffer_info.bytes_per_pixel
     }
     pub fn clear(self: &mut Self, color: &Color) {
-        if self.frame_buffer.is_none() {
+        if self.info.is_none() {
             return;
         }
-        let info = self.frame_buffer.as_ref().unwrap().info();
+        let info = self.info.unwrap();
         self.draw_rect(0, 0, info.width, info.height, color)
     }
+
+    fn buffer_mut(&self) -> &mut [u8] {
+        let size = self.info.unwrap().byte_len;
+        unsafe { slice::from_raw_parts_mut(self.surface, size) }
+    }
+
     fn set_pixel_raw(self: &mut Self, x: usize, y: usize, color: &[u8]) {
-        if self.frame_buffer.is_none() {
+        if self.info.is_none() {
             return;
         }
-        let fb = self.frame_buffer.as_deref_mut().unwrap();
-        let fbi = fb.info();
+        let fbi = self.info.unwrap();
 
         if x >= fbi.width || y >= fbi.height {
             return;
         }
 
-        let fb_buffer = fb.buffer_mut();
+        let fb_buffer = self.buffer_mut();
         let start = Self::get_buffer_start_offset(x as usize, y as usize, fbi);
 
         let count = min(fbi.bytes_per_pixel, color.len());
@@ -173,11 +261,7 @@ impl KernelFramebuffer {
     }
     #[inline]
     fn to_framebuffer_color(self: &mut Self, color: &Color) -> Option<Box<[u8]>> {
-        if self.frame_buffer.is_none() {
-            return None;
-        }
-        let fb = self.frame_buffer.as_deref_mut().unwrap();
-        let fbi = fb.info();
+        let fbi = self.info?;
         if !Self::is_supported(fbi.pixel_format) {
             return None;
         }
@@ -193,7 +277,7 @@ impl KernelFramebuffer {
         height: usize,
         color: &Color,
     ) {
-        if self.frame_buffer.is_none() {
+        if self.info.is_none() {
             return;
         }
         let fb_color = self.to_framebuffer_color(color);
@@ -209,11 +293,10 @@ impl KernelFramebuffer {
         }
     }
     pub fn set_pixel(self: &mut Self, x: usize, y: usize, color: &Color) {
-        if self.frame_buffer.is_none() {
+        if self.info.is_none() {
             return;
         }
-        let fb = self.frame_buffer.as_deref_mut().unwrap();
-        let fbi = fb.info();
+        let fbi = self.info.unwrap();
         if Self::is_supported(fbi.pixel_format) == false {
             return;
         }
@@ -223,12 +306,11 @@ impl KernelFramebuffer {
     }
 
     pub(crate) fn shift_up(self: &mut Self, lines: usize) {
-        if self.frame_buffer.is_none() {
+        if self.info.is_none() {
             return;
         }
-        let fb = self.frame_buffer.as_mut().unwrap();
-        let info = fb.info();
-        let mut_framebuffer = fb.buffer_mut();
+        let info = self.info.unwrap();
+        let mut_framebuffer = self.buffer_mut();
         let start_y = lines;
         let start_offset = Self::get_buffer_start_offset(0, start_y, info);
         let end_offset = Self::get_buffer_start_offset(info.width - 1, info.height - 1, info);
