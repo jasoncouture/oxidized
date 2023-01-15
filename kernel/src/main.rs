@@ -16,7 +16,7 @@ extern crate alloc;
 
 use core::ptr::NonNull;
 
-use arch::arch_x86_64::cpu::cpu_apic_id;
+use arch::arch_x86_64::cpu::{cpu_apic_id, CPU_STACK_PAGES};
 use bootloader_api::{config::Mapping, info::MemoryRegionKind, BootInfo};
 use spin::Mutex;
 use x86_64::{software_interrupt, VirtAddr};
@@ -50,7 +50,7 @@ pub mod thread;
 const CONFIG: bootloader_api::BootloaderConfig = {
     let mut config = bootloader_api::BootloaderConfig::new_default();
     config.mappings.aslr = true;
-    config.kernel_stack_size = 512 * PAGE_SIZE as u64;
+    config.kernel_stack_size = CPU_STACK_PAGES as u64 * PAGE_SIZE as u64;
     config.mappings.physical_memory = Some(Mapping::Dynamic);
     config.mappings.dynamic_range_end = Some(KERNEL_HEAP_START as u64);
     config.mappings.dynamic_range_start = Some((PAGE_SIZE * 100) as u64); // Reserve the first 1mb of virtual address space. Please.

@@ -31,7 +31,7 @@ use crate::{
 
 use super::{acpi::ACPI_TABLES, apic::LOCAL_APIC};
 
-const CPU_STACK_PAGES: usize = 512;
+pub(crate) const CPU_STACK_PAGES: usize = 256;
 
 static BOOTSTRAP_CODE: &[u8] = include_bytes!(concat!(
     env!("OUT_DIR"),
