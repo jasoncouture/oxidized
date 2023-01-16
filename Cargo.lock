@@ -315,6 +315,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "devices"
+version = "0.1.0"
+dependencies = [
+ "bitvec",
+ "futures-util",
+ "lazy_static",
+ "nasm-rs",
+ "spin 0.9.4",
+ "uart_16550",
+ "uuid 1.2.2",
+ "walkdir",
+]
+
+[[package]]
 name = "event-listener"
 version = "2.5.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -561,6 +575,7 @@ dependencies = [
  "acpi",
  "bitvec",
  "bootloader_api",
+ "devices",
  "futures-util",
  "iced-x86",
  "kernel_shared",

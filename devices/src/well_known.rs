@@ -1,7 +1,6 @@
 use lazy_static::lazy_static;
 use uuid::Uuid;
 // e8398181-1506-4a68-b239-20c24970080a
-// fedccb84-20f4-4604-a47b-080efeb8eac1
 // df14874d-211d-40b5-af49-42c6fdc4b003
 // 7d9e622e-0d6c-481f-938f-5c342e6da46f
 // c84d9a17-c924-42ad-99f8-9b8f59833fda
@@ -35,7 +34,7 @@ use uuid::Uuid;
 macro_rules! device_uuid {
     ($ident: ident, $val: tt) => {
         lazy_static! {
-            pub static ref $ident: Uuid = Uuid::parse_str($val).unwrap();        
+            pub static ref $ident: Uuid = Uuid::parse_str($val).unwrap();
         }
     };
 }
@@ -46,4 +45,4 @@ device_uuid!(FRAMEBUFFER, "f80ce1ac-890f-4a92-8844-fb447d01992c");
 device_uuid!(SERIAL, "f80ce1ac-7bde-4b7a-9398-ea31faff52c1");
 device_uuid!(IPL, "f80ce1ac-5759-458f-bbd1-71112e971117");
 device_uuid!(CPU, "f80ce1ac-d1ec-4e0e-a3a5-a2fd78b4d722");
-
+device_uuid!(DEVICE_TREE, "f80ce1ac-0000-4000-8000-000000000000");

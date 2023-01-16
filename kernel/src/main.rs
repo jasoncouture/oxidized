@@ -23,7 +23,7 @@ use alloc::{
 };
 use arch::arch_x86_64::cpu::{cpu_apic_id, CPU_STACK_PAGES};
 use bootloader_api::{config::Mapping, BootInfo};
-use devices::Device;
+use devices::{Device, get_mut_device_tree, well_known::DEVICE_TREE};
 use spin::Mutex;
 use uuid::Uuid;
 use x86_64::VirtAddr;
@@ -38,8 +38,7 @@ use crate::{
     arch::{
         arch_x86_64::{get_cpu_brand_string, get_cpu_vendor_string},
         get_current_cpu, wait_for_interrupt,
-    },
-    devices::get_mut_device_tree,
+    }
 };
 
 include!(concat!(env!("OUT_DIR"), "/metadata_constants.rs"));
@@ -48,7 +47,6 @@ pub(crate) mod console;
 pub(crate) mod framebuffer;
 pub(crate) mod logging;
 
-mod devices;
 pub mod errors;
 mod loader;
 mod memory;
@@ -117,6 +115,10 @@ struct KernelDevice {}
 impl Device for KernelDevice {
     fn ready(&self) -> bool {
         true
+    }
+
+    fn parent_id(&self) -> Option<u128> {
+        Some(DEVICE_TREE.as_u128())
     }
 
     fn name(&self) -> String {

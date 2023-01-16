@@ -1,7 +1,13 @@
+#![no_std]
+#![feature(once_cell)]
+#![feature(core_intrinsics)]
+#![feature(error_in_core)]
+extern crate alloc;
+
 pub mod well_known;
 
 use core::{
-    cell::OnceCell, error::Error, fmt::Display, intrinsics::type_name, ptr::NonNull, str::FromStr,
+    cell::OnceCell, error::Error, fmt::Display, intrinsics::type_name,
 };
 
 use alloc::{
@@ -10,8 +16,7 @@ use alloc::{
     string::{String, ToString},
     vec::Vec,
 };
-use lazy_static::lazy_static;
-use spin::{Mutex, RwLock, RwLockReadGuard, RwLockWriteGuard};
+use spin::{RwLock, RwLockReadGuard, RwLockWriteGuard};
 use uuid::Uuid;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -20,15 +25,47 @@ pub struct Handle {
     device_resource_id: u128,
 }
 
+pub struct DeviceTreeDevice {}
+
+impl Device for DeviceTreeDevice{
+    fn name(&self) -> String {
+        "DEVICE_TREE".to_string()
+    }
+
+    fn ready(&self) -> bool {
+        true
+    }
+
+    fn function(&self, id: usize, args: &[usize]) -> Result<&[u8], DeviceError> {
+        match id {
+            0 => {
+                todo!()
+            },
+            1 => {
+                todo!()
+            }
+            _ => Err(DeviceError::new(DeviceErrorCode::NotImplemented))
+        }
+    }
+
+    fn uuid(&self) -> Uuid {
+        *well_known::DEVICE_TREE
+    }
+}
+
+#[cfg(feature = "kernel")]
 pub struct DeviceTree {
     map: BTreeMap<u128, Box<dyn Device>>,
 }
 
+#[cfg(feature = "kernel")]
 impl DeviceTree {
     fn new() -> Self {
-        Self {
+        let mut ret = Self {
             map: BTreeMap::new(),
-        }
+        };
+        ret.register(DeviceTreeDevice{});
+        ret
     }
 
     pub fn register(&mut self, device: impl Device + 'static) -> u128 {
@@ -101,7 +138,8 @@ impl DeviceTree {
     }
 }
 
-pub(crate) fn get_mut_device_tree() -> RwLockWriteGuard<'static, DeviceTree> {
+#[cfg(feature = "kernel")]
+pub fn get_mut_device_tree() -> RwLockWriteGuard<'static, DeviceTree> {
     unsafe {
         DEVICE_TREE
             .get_or_init(|| RwLock::new(DeviceTree::new()))
@@ -109,7 +147,8 @@ pub(crate) fn get_mut_device_tree() -> RwLockWriteGuard<'static, DeviceTree> {
     }
 }
 
-pub(crate) fn get_device_tree() -> RwLockReadGuard<'static, DeviceTree> {
+#[cfg(feature = "kernel")]
+pub fn get_device_tree() -> RwLockReadGuard<'static, DeviceTree> {
     unsafe {
         DEVICE_TREE
             .get_or_init(|| RwLock::new(DeviceTree::new()))
@@ -117,6 +156,7 @@ pub(crate) fn get_device_tree() -> RwLockReadGuard<'static, DeviceTree> {
     }
 }
 
+#[cfg(feature = "kernel")]
 static mut DEVICE_TREE: OnceCell<RwLock<DeviceTree>> = OnceCell::new();
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
