@@ -10,7 +10,7 @@ use spin::Mutex;
 
 use kernel_shared::memory::*;
 
-use crate::{memory::allocator::kmalloc, device::{Device, well_known::{self, IPL}, get_mut_device_tree}};
+use crate::{memory::allocator::kmalloc, devices::{Device, well_known::{self, IPL}, get_mut_device_tree}};
 
 #[derive(Debug, Clone, Copy)]
 pub(crate) struct Point(pub usize, pub usize);

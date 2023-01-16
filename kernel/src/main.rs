@@ -23,7 +23,7 @@ use alloc::{
 };
 use arch::arch_x86_64::cpu::{cpu_apic_id, CPU_STACK_PAGES};
 use bootloader_api::{config::Mapping, BootInfo};
-use device::Device;
+use devices::Device;
 use spin::Mutex;
 use uuid::Uuid;
 use x86_64::VirtAddr;
@@ -39,7 +39,7 @@ use crate::{
         arch_x86_64::{get_cpu_brand_string, get_cpu_vendor_string},
         get_current_cpu, wait_for_interrupt,
     },
-    device::get_mut_device_tree,
+    devices::get_mut_device_tree,
 };
 
 include!(concat!(env!("OUT_DIR"), "/metadata_constants.rs"));
@@ -48,7 +48,7 @@ pub(crate) mod console;
 pub(crate) mod framebuffer;
 pub(crate) mod logging;
 
-mod device;
+mod devices;
 pub mod errors;
 mod loader;
 mod memory;
@@ -124,7 +124,7 @@ impl Device for KernelDevice {
     }
 
     fn uuid(&self) -> Uuid {
-        *device::well_known::IPL
+        *devices::well_known::IPL
     }
 }
 
@@ -144,7 +144,7 @@ fn kernel_main() -> ! {
 
     let mut device_tree = get_mut_device_tree();
     let root_device = device_tree.register(KernelDevice{});
-    debug!("Registered kernel device ({}) as {:032X}", device::well_known::IPL.as_hyphenated(), root_device);
+    debug!("Registered kernel device ({}) as {:032X}", devices::well_known::IPL.as_hyphenated(), root_device);
     debug!("Enumerating device tree");
     for i in device_tree.keys().iter() {
         let dev = device_tree.get(i).expect("UNKNOWN DEVICE");
