@@ -17,10 +17,16 @@ extern crate alloc;
 
 use core::ptr::NonNull;
 
+use alloc::{
+    format,
+    string::{String, ToString},
+};
 use arch::arch_x86_64::cpu::{cpu_apic_id, CPU_STACK_PAGES};
 use bootloader_api::{config::Mapping, BootInfo};
+use device::Device;
 use spin::Mutex;
-use x86_64::{VirtAddr};
+use uuid::Uuid;
+use x86_64::VirtAddr;
 
 use framebuffer::*;
 use memory::{
@@ -28,12 +34,13 @@ use memory::{
     *,
 };
 
-
-use crate::arch::{
-    arch_x86_64::{get_cpu_brand_string, get_cpu_vendor_string}, get_current_cpu, wait_for_interrupt,
+use crate::{
+    arch::{
+        arch_x86_64::{get_cpu_brand_string, get_cpu_vendor_string},
+        get_current_cpu, wait_for_interrupt,
+    },
+    device::get_mut_device_tree,
 };
-
-
 
 include!(concat!(env!("OUT_DIR"), "/metadata_constants.rs"));
 pub(crate) mod arch;
@@ -41,12 +48,13 @@ pub(crate) mod console;
 pub(crate) mod framebuffer;
 pub(crate) mod logging;
 
+mod device;
+pub mod errors;
 mod loader;
 mod memory;
 mod panic;
 pub(crate) mod serial;
 pub mod thread;
-pub mod errors;
 
 const CONFIG: bootloader_api::BootloaderConfig = {
     let mut config = bootloader_api::BootloaderConfig::new_default();
@@ -104,6 +112,22 @@ fn clear() {
     frame_buffer.clear(&Color::black());
 }
 
+struct KernelDevice {}
+
+impl Device for KernelDevice {
+    fn ready(&self) -> bool {
+        true
+    }
+
+    fn name(&self) -> String {
+        "KERNEL".to_string()
+    }
+
+    fn uuid(&self) -> Uuid {
+        *device::well_known::IPL
+    }
+}
+
 fn kernel_main() -> ! {
     let status_bits = arch::arch_x86_64::cpu::get_online_cpu_status_bits();
     {
@@ -117,6 +141,25 @@ fn kernel_main() -> ! {
     );
     verbose!("CPU Vendor: {}", get_cpu_vendor_string());
     verbose!("CPU Brand : {}", get_cpu_brand_string());
+
+    let mut device_tree = get_mut_device_tree();
+    let root_device = device_tree.register(KernelDevice{});
+    debug!("Registered kernel device ({}) as {:032X}", device::well_known::IPL.as_hyphenated(), root_device);
+    debug!("Enumerating device tree");
+    for i in device_tree.keys().iter() {
+        let dev = device_tree.get(i).expect("UNKNOWN DEVICE");
+        let path = device_tree.get_device_path(dev);
+        // The third URI
+        debug!(
+            "Found: {} at sys://device/uuid/{}, sys://device/id/{:032x}, and  sys://device/path/{}/{:032x}",
+            dev.name(),
+            dev.uuid().as_hyphenated(),
+            i,
+            path,
+            i
+        );
+    }
+
     set_kernel_ready();
     // Join the APIs in their halt loop glory.
     kernel_cpu_main();

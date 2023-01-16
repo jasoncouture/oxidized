@@ -1,7 +1,8 @@
 extern crate alloc;
 
-use alloc::boxed::Box;
-use core::{alloc::Layout, cmp::min, slice};
+use alloc::{boxed::Box, string::String};
+use uuid::Uuid;
+use core::{alloc::Layout, cmp::min, slice, str::FromStr};
 
 use bootloader_api::info::*;
 use lazy_static::*;
@@ -9,7 +10,7 @@ use spin::Mutex;
 
 use kernel_shared::memory::*;
 
-use crate::memory::allocator::kmalloc;
+use crate::{memory::allocator::kmalloc, device::{Device, well_known::{self, IPL}, get_mut_device_tree}};
 
 #[derive(Debug, Clone, Copy)]
 pub(crate) struct Point(pub usize, pub usize);
@@ -102,6 +103,29 @@ pub fn swap_framebuffer() {
 
 pub fn init_framebuffer(frame_buffer: Option<&'static mut FrameBuffer>) {
     FRAME_BUFFER.lock().set_framebuffer(frame_buffer);
+    get_mut_device_tree().register(FramebufferDevice{parent: IPL.as_u128()});
+}
+
+#[derive(Clone, Copy)]
+struct FramebufferDevice {
+    parent: u128
+}
+
+impl Device for FramebufferDevice {
+    fn name(&self) -> alloc::string::String {
+        String::from_str("FRAMEBUFFER").unwrap()
+    }
+    fn ready(&self) -> bool {
+        true
+    }
+
+    fn parent_id(&self) -> Option<u128> {
+        Some(self.parent)
+    }
+
+    fn uuid(&self) -> Uuid {
+        *well_known::FRAMEBUFFER
+    }
 }
 
 pub(crate) struct KernelFramebuffer {
