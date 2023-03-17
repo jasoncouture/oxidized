@@ -19,9 +19,9 @@ fn main() {
     // create an UEFI disk image (optional)
     let uefi_path = out_dir.join(UEFI_IMAGE_NAME);
     let bios_path = out_dir.join(BIOS_IMAGE_NAME);
-    let binding = &kernel.to_path_buf();
+    let binding = kernel.to_path_buf();
     let mut disk_image_builder = bootloader::DiskImageBuilder::new(binding);
-    disk_image_builder.set_ramdisk(&ramdisk);
+    disk_image_builder.set_ramdisk(ramdisk);
     disk_image_builder.create_uefi_image(&uefi_path).unwrap();
     //disk_image_builder.create_bios_image(&bios_path).unwrap();
 

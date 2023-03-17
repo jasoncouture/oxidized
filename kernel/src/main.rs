@@ -6,7 +6,6 @@
 #![feature(alloc_error_handler)]
 #![feature(abi_x86_interrupt)]
 #![feature(asm_const)]
-#![feature(box_syntax)]
 #![feature(once_cell)]
 #![feature(naked_functions)]
 #![feature(pointer_byte_offsets)]
