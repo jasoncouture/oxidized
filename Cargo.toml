@@ -11,8 +11,7 @@ members = [
 	"memorymanager",
 	"processmanager",
 	"ipcs",
-	"ipc",
-	"devices"
+	"ipc"
 ]
 exclude = ["bootloader"]
 

@@ -10,7 +10,6 @@ use spin::Mutex;
 
 use kernel_shared::memory::*;
 
-use devices::{Device, well_known::{self, IPL}, get_mut_device_tree};
 use crate::{memory::allocator::kmalloc};
 
 #[derive(Debug, Clone, Copy)]
@@ -104,29 +103,7 @@ pub fn swap_framebuffer() {
 
 pub fn init_framebuffer(frame_buffer: Option<&'static mut FrameBuffer>) {
     FRAME_BUFFER.lock().set_framebuffer(frame_buffer);
-    get_mut_device_tree().register(FramebufferDevice{parent: IPL.as_u128()});
-}
-
-#[derive(Clone, Copy)]
-struct FramebufferDevice {
-    parent: u128
-}
-
-impl Device for FramebufferDevice {
-    fn name(&self) -> alloc::string::String {
-        String::from_str("FRAMEBUFFER").unwrap()
-    }
-    fn ready(&self) -> bool {
-        true
-    }
-
-    fn parent_id(&self) -> Option<u128> {
-        Some(self.parent)
-    }
-
-    fn uuid(&self) -> Uuid {
-        *well_known::FRAMEBUFFER
-    }
+    //get_mut_device_tree().register(FramebufferDevice{parent: IPL.as_u128()});
 }
 
 pub(crate) struct KernelFramebuffer {

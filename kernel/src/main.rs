@@ -16,15 +16,10 @@ extern crate alloc;
 
 use core::ptr::NonNull;
 
-use alloc::{
-    format,
-    string::{String, ToString},
-};
+
 use arch::arch_x86_64::cpu::{cpu_apic_id, CPU_STACK_PAGES};
 use bootloader_api::{config::Mapping, BootInfo};
-use devices::{Device, get_mut_device_tree, well_known::DEVICE_TREE};
 use spin::Mutex;
-use uuid::Uuid;
 use x86_64::VirtAddr;
 
 use framebuffer::*;
@@ -60,6 +55,7 @@ const CONFIG: bootloader_api::BootloaderConfig = {
     config.mappings.physical_memory = Some(Mapping::Dynamic);
     config.mappings.dynamic_range_end = Some(KERNEL_HEAP_START as u64);
     config.mappings.dynamic_range_start = Some((PAGE_SIZE * 100) as u64); // Reserve the first 1mb of virtual address space. Please.
+    config.mappings.ramdisk_memory = Mapping::Dynamic;
     config
 };
 
@@ -67,7 +63,7 @@ bootloader_api::entry_point!(kernel_boot, config = &CONFIG);
 static mut BOOT_INFO: Option<NonNull<BootInfo>> = None;
 
 #[allow(unreachable_code)]
-fn kernel_boot(boot_info: &'static mut bootloader_api::BootInfo) -> ! {
+fn kernel_boot(boot_info: &'static mut BootInfo) -> ! {
     println!("Booting");
     unsafe {
         println!("Creating boot info pointer");
@@ -109,26 +105,6 @@ fn clear() {
     frame_buffer.clear(&Color::black());
 }
 
-struct KernelDevice {}
-
-impl Device for KernelDevice {
-    fn ready(&self) -> bool {
-        true
-    }
-
-    fn parent_id(&self) -> Option<u128> {
-        Some(DEVICE_TREE.as_u128())
-    }
-
-    fn name(&self) -> String {
-        "KERNEL".to_string()
-    }
-
-    fn uuid(&self) -> Uuid {
-        *devices::well_known::IPL
-    }
-}
-
 fn kernel_main() -> ! {
     let status_bits = arch::arch_x86_64::cpu::get_online_cpu_status_bits();
     {
@@ -143,23 +119,23 @@ fn kernel_main() -> ! {
     verbose!("CPU Vendor: {}", get_cpu_vendor_string());
     verbose!("CPU Brand : {}", get_cpu_brand_string());
 
-    let mut device_tree = get_mut_device_tree();
-    let root_device = device_tree.register(KernelDevice{});
-    debug!("Registered kernel device ({}) as {:032X}", devices::well_known::IPL.as_hyphenated(), root_device);
-    debug!("Enumerating device tree");
-    for i in device_tree.keys().iter() {
-        let dev = device_tree.get(i).expect("UNKNOWN DEVICE");
-        let path = device_tree.get_device_path(dev);
-        // The third URI
-        debug!(
-            "Found: {} at sys://device/uuid/{}, sys://device/id/{:032x}, and  sys://device/path/{}/{:032x}",
-            dev.name(),
-            dev.uuid().as_hyphenated(),
-            i,
-            path,
-            i
-        );
-    }
+    // let mut device_tree = get_mut_device_tree();
+    // let root_device = device_tree.register(KernelDevice{});
+    // debug!("Registered kernel device ({}) as {:032X}", devices::well_known::IPL.as_hyphenated(), root_device);
+    // debug!("Enumerating device tree");
+    // for i in device_tree.keys().iter() {
+    //     let dev = device_tree.get(i).expect("UNKNOWN DEVICE");
+    //     let path = device_tree.get_device_path(dev);
+    //     // The third URI
+    //     debug!(
+    //         "Found: {} at sys://device/uuid/{}, sys://device/id/{:032x}, and  sys://device/path/{}/{:032x}",
+    //         dev.name(),
+    //         dev.uuid().as_hyphenated(),
+    //         i,
+    //         path,
+    //         i
+    //     );
+    // }
 
     set_kernel_ready();
     // Join the APIs in their halt loop glory.
