@@ -1,8 +1,8 @@
 extern crate alloc;
 
-use alloc::{boxed::Box, string::String};
-use uuid::Uuid;
-use core::{alloc::Layout, cmp::min, slice, str::FromStr};
+use alloc::{boxed::Box};
+
+use core::{alloc::Layout, cmp::min, slice};
 
 use bootloader_api::info::*;
 use lazy_static::*;
