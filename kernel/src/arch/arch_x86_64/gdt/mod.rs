@@ -1,10 +1,9 @@
 use alloc::vec::Vec;
 
-
 use lazy_static::lazy_static;
 use spin::Mutex;
 use x86_64::instructions::tables::load_tss;
-use x86_64::registers::segmentation::{Segment};
+use x86_64::registers::segmentation::Segment;
 use x86_64::structures::gdt::{
     Descriptor, DescriptorFlags, GlobalDescriptorTable, SegmentSelector,
 };
@@ -146,8 +145,8 @@ lazy_static! {
             let mut tss = TaskStateSegment::new();
             let stacks = get_tss_stacks_for_cpu(i as u16);
             for x in 0..stacks.len() {
-                let stack_address = 
-                (VirtAddr::from_ptr(&stacks[x]) + (INTERRUPT_STACK_SIZE - 256)).align_down(16 as u64);
+                let stack_address = (VirtAddr::from_ptr(&stacks[x]) + (INTERRUPT_STACK_SIZE - 256))
+                    .align_down(16 as u64);
                 if x < 7 {
                     tss.interrupt_stack_table[x] = stack_address;
                 }

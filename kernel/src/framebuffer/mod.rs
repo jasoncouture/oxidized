@@ -1,6 +1,6 @@
 extern crate alloc;
 
-use alloc::{boxed::Box};
+use alloc::boxed::Box;
 
 use core::{alloc::Layout, cmp::min, slice};
 
@@ -10,7 +10,7 @@ use spin::Mutex;
 
 use kernel_shared::memory::*;
 
-use crate::{memory::allocator::kmalloc};
+use crate::memory::allocator::kmalloc;
 
 #[derive(Debug, Clone, Copy)]
 pub(crate) struct Point(pub usize, pub usize);
@@ -184,11 +184,11 @@ impl KernelFramebuffer {
         }
     }
 
-    pub (crate) fn info(&self) -> Option<FrameBufferInfo> {
+    pub(crate) fn info(&self) -> Option<FrameBufferInfo> {
         unsafe { FRAME_BUFFER_INTERNAL.info }
     }
 
-    pub (crate) fn swap_buffer(&self) {
+    pub(crate) fn swap_buffer(&self) {
         let info = self.info.unwrap();
         unsafe {
             if info.byte_len % 8 == 0 {

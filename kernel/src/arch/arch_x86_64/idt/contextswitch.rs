@@ -1,13 +1,17 @@
-use core::{arch::asm};
+use core::arch::asm;
 
-
-
-
-use crate::{debug, arch::{arch_x86_64::gdt::{INTERRUPT_STACK_SIZE, get_gdt}, get_current_cpu}};
+use crate::{
+    arch::{
+        arch_x86_64::gdt::{get_gdt, INTERRUPT_STACK_SIZE},
+        get_current_cpu,
+    },
+    debug,
+};
 
 #[naked]
 pub unsafe extern "C" fn _context_switch() {
-    asm!("
+    asm!(
+        "
 	push	r15
 	push	r14
 	push	r13
@@ -54,7 +58,9 @@ pub unsafe extern "C" fn _context_switch() {
 	pop	r14
 	pop	r15
     iretq
-    ", options(noreturn));
+    ",
+        options(noreturn)
+    );
 }
 #[derive(Debug, Clone, Copy)]
 #[repr(C, align(8))]
@@ -66,17 +72,17 @@ pub struct PlatformContextState {
 
 impl PlatformContextState {
     pub fn new() -> Self {
-           let gdt = get_gdt(get_current_cpu());
-           let cs = gdt.get_user_code_segment().index() as u64;
-           let ds = gdt.get_user_data_segment().index() as u64;
-           let mut registers = RegisterState::default();
-           registers.cs = cs;
-           registers.ss = ds;
+        let gdt = get_gdt(get_current_cpu());
+        let cs = gdt.get_user_code_segment().index() as u64;
+        let ds = gdt.get_user_data_segment().index() as u64;
+        let mut registers = RegisterState::default();
+        registers.cs = cs;
+        registers.ss = ds;
 
         Self {
             registers,
             sse: None,
-            tss: None
+            tss: None,
         }
     }
 }
@@ -112,8 +118,7 @@ pub struct RegisterState {
 unsafe extern "C" fn context_switch(state: *mut RegisterState, state_address: usize) {
     debug!(
         "Context switch requested, context state stored at {:p} ({:016x}",
-        state,
-        state_address,
+        state, state_address,
     );
 }
 

@@ -72,7 +72,8 @@ impl KernelAllocator {
     }
 
     pub fn calculate_heap_expansion(&self, layout: Layout) -> usize {
-        (self.get_heap_size() / 4).max(((layout.align() + layout.size()) * 3) / 2) // increase by a minimum of 25%, or 1.5x requested, whichever is larger.
+        (self.get_heap_size() / 4).max(((layout.align() + layout.size()) * 3) / 2)
+        // increase by a minimum of 25%, or 1.5x requested, whichever is larger.
     }
 }
 

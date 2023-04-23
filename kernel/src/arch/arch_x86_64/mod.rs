@@ -13,10 +13,10 @@ use self::cpu::cpu_apic_id;
 pub(crate) mod acpi;
 pub(crate) mod apic;
 pub(crate) mod cpu;
+pub mod cpuid;
 pub(crate) mod gdt;
 pub(crate) mod idt;
 pub(crate) mod syscall;
-pub mod cpuid;
 
 pub const PIC_1_OFFSET: u8 = 32;
 pub const PIC_2_OFFSET: u8 = PIC_1_OFFSET + 8;

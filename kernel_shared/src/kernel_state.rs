@@ -1,20 +1,18 @@
 use alloc::collections::BTreeMap;
 use alloc::string::{String, ToString};
-use uuid::Uuid;
-use core::any::{Any};
+use core::any::Any;
 use core::fmt::Debug;
-use core::intrinsics::{type_name};
+use core::intrinsics::type_name;
+use uuid::Uuid;
 
 #[derive(Copy, Clone, Debug)]
-struct BootData {
-    
-}
+struct BootData {}
 
 #[derive(Clone, Copy, Debug, PartialEq, PartialOrd, Ord, Eq)]
 #[repr(u64)]
 pub enum DeviceClass {
     Unknown = 0,
-    Kernel = 1
+    Kernel = 1,
 }
 
 #[derive(Clone)]
@@ -22,27 +20,29 @@ pub struct DeviceDescriptor {
     device: &'static dyn Any,
     device_id: u128,
     device_parent_id: Option<u128>,
-    device_class: DeviceClass
+    device_class: DeviceClass,
 }
 
 impl DeviceDescriptor {
-    pub fn new<T>(device: &'static T, device_class: DeviceClass) -> Self where T : Device<T> {
+    pub fn new<T>(device: &'static T, device_class: DeviceClass) -> Self
+    where
+        T: Device<T>,
+    {
         Self {
             device: device,
             device_id: device.uuid().as_u128(),
             device_parent_id: device.parent_id(),
-            device_class: device_class
+            device_class: device_class,
         }
     }
 }
 
-pub trait DeviceBase : 'static + Clone + Copy + Any {
+pub trait DeviceBase: 'static + Clone + Copy + Any {
     fn try_into<T>(&self) -> Option<&'static T>;
     fn try_into_mut<T>(&self) -> Option<&'static mut T>;
 }
 
-
-pub trait Device<T> : 'static + DeviceBase {
+pub trait Device<T>: 'static + DeviceBase {
     fn uuid(&self) -> Uuid {
         Uuid::nil()
     }
@@ -64,7 +64,11 @@ pub trait VirtualMemoryManager {
     fn heap_free(&mut self, size: usize);
     fn page_alloc(&mut self, count: usize, zero: bool) -> anyhow::Result<*mut u8>;
     fn page_free(&mut self, pages_start: *mut u8, count: usize);
-    fn physical_page_alloc(&mut self, physical_address: usize, zero: bool) -> anyhow::Result<*mut u8>;
+    fn physical_page_alloc(
+        &mut self,
+        physical_address: usize,
+        zero: bool,
+    ) -> anyhow::Result<*mut u8>;
 }
 
 struct KernelState {
@@ -90,16 +94,28 @@ impl VirtualMemoryManager for KernelState {
         self.memory_manager.page_free(pages_start, count)
     }
 
-    fn physical_page_alloc(&mut self, physical_address: usize, zero: bool) -> anyhow::Result<*mut u8> {
-        self.memory_manager.physical_page_alloc(physical_address, zero)
+    fn physical_page_alloc(
+        &mut self,
+        physical_address: usize,
+        zero: bool,
+    ) -> anyhow::Result<*mut u8> {
+        self.memory_manager
+            .physical_page_alloc(physical_address, zero)
     }
 }
 
 impl KernelState {
-    pub fn new<T>(boot_info: BootData, memory_manager: &'static mut dyn VirtualMemoryManager) -> Self where T : VirtualMemoryManager {
-        KernelState { boot_info, devices: BTreeMap::new(), memory_manager }
+    pub fn new<T>(
+        boot_info: BootData,
+        memory_manager: &'static mut dyn VirtualMemoryManager,
+    ) -> Self
+    where
+        T: VirtualMemoryManager,
+    {
+        KernelState {
+            boot_info,
+            devices: BTreeMap::new(),
+            memory_manager,
+        }
     }
 }
-
-
-

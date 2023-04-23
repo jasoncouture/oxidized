@@ -1,9 +1,8 @@
 use core::arch::asm;
 
-use alloc::{collections::BTreeMap};
+use alloc::collections::BTreeMap;
 use lazy_static::lazy_static;
 use spin::RwLock;
-
 
 use crate::{debug, errors::SyscallError};
 
@@ -101,7 +100,7 @@ impl SyscallTables {
         } else {
             let mut table = SyscallTable::new();
             callback(&mut table);
-            self.register_personality(id, table); 
+            self.register_personality(id, table);
         }
     }
 }

@@ -9,7 +9,10 @@ use spin::Mutex;
 use x86::msr::{rdmsr, IA32_EFER};
 use x86_64::{
     instructions::interrupts,
-    registers::{control::{Cr0, Cr4, Cr4Flags, Cr0Flags}, model_specific::{EferFlags, Efer}},
+    registers::{
+        control::{Cr0, Cr0Flags, Cr4, Cr4Flags},
+        model_specific::{Efer, EferFlags},
+    },
     structures::paging::{PageTableFlags, PhysFrame},
     PhysAddr,
 };

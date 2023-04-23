@@ -7,6 +7,6 @@ extern crate core;
 pub mod constants;
 pub mod handle;
 pub mod ipc;
+pub mod kernel_state;
 pub mod memory;
 pub mod syscall;
-pub mod kernel_state;

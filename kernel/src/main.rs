@@ -14,7 +14,6 @@ extern crate alloc;
 
 use core::ptr::NonNull;
 
-
 use arch::arch_x86_64::cpu::{cpu_apic_id, CPU_STACK_PAGES};
 use bootloader_api::{config::Mapping, BootInfo};
 use spin::Mutex;
@@ -26,11 +25,9 @@ use memory::{
     *,
 };
 
-use crate::{
-    arch::{
-        arch_x86_64::{get_cpu_brand_string, get_cpu_vendor_string},
-        get_current_cpu, wait_for_interrupt,
-    }
+use crate::arch::{
+    arch_x86_64::{get_cpu_brand_string, get_cpu_vendor_string},
+    get_current_cpu, wait_for_interrupt,
 };
 
 include!(concat!(env!("OUT_DIR"), "/metadata_constants.rs"));
