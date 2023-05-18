@@ -10,9 +10,7 @@ pub enum LogLevel {
     FATAL,
 }
 pub(crate) fn _print(log_level: LogLevel, args: core::fmt::Arguments) {
-    let cpu = super::arch::get_current_cpu();
-    crate::println!("[C:{:03}][{}]: {}", cpu, log_level, args);
-    crate::console_println!("[C:{:03}][{}]: {}", cpu, log_level, args);
+    crate::println!("[{}]: {}", log_level, args);
 }
 
 impl Display for LogLevel {

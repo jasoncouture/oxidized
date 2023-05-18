@@ -5,13 +5,7 @@ edition = "2021"
 
 [workspace]
 members = [
-	"kernel",
-	"kernel_shared",
-	"loader",
-	"memorymanager",
-	"processmanager",
-	"ipcs",
-	"ipc"
+	"kernel"
 ]
 exclude = ["bootloader"]
 
