@@ -1,11 +1,11 @@
-use crate::{println, info};
-
-use bitflags::bitflags;
-use self::x86_64::{PlatformImplementation, NativePageFlags};
 pub(crate) use self::x86_64::PLATFORM_VALID_PAGE_SIZES;
+use self::x86_64::{NativePageFlags, PlatformBootInfo, PlatformImplementation};
+use alloc::vec::Vec;
+use bitflags::bitflags;
 
 #[cfg(target_arch = "x86_64")]
 pub(crate) use self::x86_64::PlatformMemoryAddress;
+pub(crate) type Hal = PlatformImplementation;
 
 #[cfg(target_arch = "x86_64")]
 pub(crate) mod x86_64;
@@ -41,22 +41,57 @@ bitflags! {
     }
 }
 
-pub(crate) trait Platform {
-    fn to_native_page_flags(flags: PageFlags) -> NativePageFlags where Self : Sized;
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
+pub enum PageState {
+    Used,
+    Free,
 }
-
-static mut PLATFORM: Option<PlatformImplementation> = None;
-
-pub(crate) fn initialize_hal(physical_memory_offset: PlatformMemoryAddress) {
-    unsafe {
-        if PLATFORM.is_some() {
-            panic!("Attempted to re-initialize HAL");
-        } else {
-            info!(
-                "Initializing HAL, with base address {:#014x}",
-                physical_memory_offset.to_virtual_address().as_u64()
-            );
-            PLATFORM = Some(PlatformImplementation::new(physical_memory_offset));
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
+pub struct PageRange {
+    pub page_state: PageState,
+    pub start: PlatformMemoryAddress,
+    pub end: PlatformMemoryAddress,
+}
+impl PageRange {
+    fn new(state: PageState, start: PlatformMemoryAddress, end: PlatformMemoryAddress) -> Self {
+        Self {
+            page_state: state,
+            start,
+            end,
         }
     }
+}
+
+pub(crate) trait Platform {
+    fn to_native_page_flags(flags: PageFlags) -> NativePageFlags;
+    fn get_memory_map(&self) -> Vec<PageRange>;
+    fn get_compact_memory_map(&self) -> Vec<PageRange> {
+        let mut compacted = Vec::new();
+        let mut raw: Vec<PageRange> = self.get_memory_map();
+        raw.sort_unstable();
+        for i in raw.iter() {
+            if compacted.len() == 0 {
+                compacted.push(*i);
+                continue;
+            }
+            let mut last = *compacted.last().unwrap();
+            if last.page_state == i.page_state && last.end == i.start {
+                last.end = i.end;
+                compacted.pop();
+                compacted.push(last);
+            } else if last.page_state == i.page_state && last.start == i.end {
+                last.start = i.start;
+                compacted.pop();
+                compacted.push(last);
+            } else {
+                compacted.push(*i);
+            }
+        }
+        compacted
+    }
+    fn get_platform_arch(&self) -> &str;
+}
+
+pub(crate) fn initialize_hal(boot_info: &'static mut PlatformBootInfo) -> PlatformImplementation {
+    PlatformImplementation::new(boot_info)
 }

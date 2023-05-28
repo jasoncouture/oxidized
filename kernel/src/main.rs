@@ -10,44 +10,52 @@
 #![feature(core_intrinsics)]
 #![feature(pointer_is_aligned)]
 #![feature(error_in_core)]
-
+#![feature(allocator_api)]
+#![feature(slice_ptr_get)]
 
 pub(crate) mod arch;
 pub(crate) mod logging;
+mod memory;
 pub(crate) mod panic;
 pub(crate) mod serial;
-use bootloader_api::{config::Mapping, BootInfo};
 
-use crate::arch::{initialize_hal, PlatformMemoryAddress};
+extern crate alloc;
+use arch::Hal;
+use klib::get_size_suffix_and_divisior;
 
-mod memory;
+use crate::arch::{PageState, Platform};
 
-//extern crate alloc;
+fn kmain(hal: &mut Hal) {
+    info!("HAL Initialized for {}", hal.get_platform_arch());
+    let memory_map = hal.get_compact_memory_map();
+    info!("Boot memory map:");
+    let mut memory_size_bytes = 0;
+    let mut memory_reserved_bytes = 0;
+    for i in memory_map.iter() {
+        info!("   {:?}", i);
+        let size = i.end.to_platform_value() - i.start.to_platform_value();
+        memory_size_bytes = memory_size_bytes + size;
+        if i.page_state == PageState::Used {
+            memory_reserved_bytes = memory_reserved_bytes + size;
+        }
+    }
+    let size_suffix_and_divisor = get_size_suffix_and_divisior(memory_size_bytes);
+    info!(
+        "Total system memory:    {}{}",
+        memory_size_bytes / size_suffix_and_divisor.1 + 1,
+        size_suffix_and_divisor.0
+    );
+    let size_suffix_and_divisor = get_size_suffix_and_divisior(memory_reserved_bytes);
+    info!(
+        "Reserved system memory: {}{}",
+        memory_reserved_bytes / size_suffix_and_divisor.1 + 1, 
+        size_suffix_and_divisor.0
+    );
 
-const KERNEL_ADDRESS_RANGE_START: u64 = 0x00008F0000000000u64;
-const KERNEL_ADDRESS_RANGE_END: u64 = 0x0000EFFFFFFFFFFFu64;
-const CONFIG: bootloader_api::BootloaderConfig = {
-    let mut config = bootloader_api::BootloaderConfig::new_default();
-    config.mappings.aslr = true;
-    config.mappings.physical_memory = Some(Mapping::Dynamic);
-    config.mappings.dynamic_range_start = Some(KERNEL_ADDRESS_RANGE_START);
-    config.mappings.dynamic_range_end = Some(KERNEL_ADDRESS_RANGE_END);
-    config.mappings.ramdisk_memory = Mapping::Dynamic;
-    config
-};
-
-bootloader_api::entry_point!(kernel_boot, config = &CONFIG);
-
-#[allow(unreachable_code)]
-fn kernel_boot(boot_info: &'static mut BootInfo) -> ! {
-    info!("Booting");
-    initialize_hal(PlatformMemoryAddress::from(
-        boot_info
-            .physical_memory_offset
-            .into_option()
-            .unwrap_or_default(),
-    ));
-    warn!("The kernel is incomplete.");
-    todo!();
-    unreachable!();
+    let size_suffix_and_divisor = get_size_suffix_and_divisior(memory_size_bytes - memory_reserved_bytes);
+    info!(
+        "Free memory at boot:    {}{}",
+        (memory_size_bytes - memory_reserved_bytes) / size_suffix_and_divisor.1+1,
+        size_suffix_and_divisor.0
+    );
 }
