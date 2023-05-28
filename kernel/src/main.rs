@@ -11,23 +11,19 @@
 #![feature(pointer_is_aligned)]
 #![feature(error_in_core)]
 
-use bootloader_api::{
-    config::{LoggerStatus, Mapping},
-    BootInfo,
-};
-use core::ptr::NonNull;
-
-use crate::arch::{initialize_hal, PlatformMemoryAddress};
 
 pub(crate) mod arch;
 pub(crate) mod logging;
 pub(crate) mod panic;
 pub(crate) mod serial;
+use bootloader_api::{config::Mapping, BootInfo};
+
+use crate::arch::{initialize_hal, PlatformMemoryAddress};
+
 mod memory;
 
 //extern crate alloc;
-const KERNEL_HEAP_RANGE_START: u64 = 0x0000800000000000u64;
-const KERNEL_HEAP_RANGE_END: u64 = 0x00008EFFFFFFFFFFFu64;
+
 const KERNEL_ADDRESS_RANGE_START: u64 = 0x00008F0000000000u64;
 const KERNEL_ADDRESS_RANGE_END: u64 = 0x0000EFFFFFFFFFFFu64;
 const CONFIG: bootloader_api::BootloaderConfig = {
