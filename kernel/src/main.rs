@@ -36,13 +36,11 @@ const CONFIG: bootloader_api::BootloaderConfig = {
     config.mappings.physical_memory = Some(Mapping::Dynamic);
     config.mappings.dynamic_range_start = Some(KERNEL_ADDRESS_RANGE_START);
     config.mappings.dynamic_range_end = Some(KERNEL_ADDRESS_RANGE_END);
-    config.serial_logger_status = LoggerStatus::Enable;
     config.mappings.ramdisk_memory = Mapping::Dynamic;
     config
 };
 
 bootloader_api::entry_point!(kernel_boot, config = &CONFIG);
-static mut BOOT_INFO: Option<NonNull<BootInfo>> = None;
 
 #[allow(unreachable_code)]
 fn kernel_boot(boot_info: &'static mut BootInfo) -> ! {
