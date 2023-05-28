@@ -30,13 +30,15 @@ fn create_command(image_path: &str, uefi: bool) -> Command {
         .arg("-serial")
         .arg("stdio")
         .arg("-m")
-        .arg("size=1024")
+        .arg("size=2048")
         .arg("-smp")
         .arg("cpus=4")
         .arg("-d")
         .arg("cpu_reset")
         .arg("-accel")
-        .arg("kvm");
+        .arg("kvm")
+        .arg("-display")
+        .arg("none");
 
     return cmd;
 }
