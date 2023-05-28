@@ -1,4 +1,6 @@
 use crate::arch::{x86_64::PlatformMemoryAddressIntegerType, PLATFORM_VALID_PAGE_SIZES};
+pub(crate) mod heap;
+pub mod page_tracker;
 
 #[derive(Debug, Clone, Copy)]
 pub struct MemoryRange {
