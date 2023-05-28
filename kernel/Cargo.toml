@@ -10,10 +10,10 @@ volatile = "0.4"
 lazy_static = { version = "1.0", features = ["spin_no_std"] }
 spin = { version = "0.9" }
 uart_16550 = "0.2"
-linked_list_allocator = { version = "0.10", features = ["use_spin"] }
-bitvec = { version = "1.0", default_features = false, features = ["atomic"] }
+bitvec = { version = "1.0", default_features = false, features = ["atomic", "alloc"] }
 uuid = { version = "1.2.2", default_features = false }
 bitflags = { version = "1.2", default-features = false }
+buddyalloc = "0.1"
 
 [dependencies.futures-util]
 version = "0.3"
