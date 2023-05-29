@@ -12,7 +12,7 @@ use x86_64::{
     VirtAddr,
 };
 
-use crate::{arch::PageState, debug, memory::page_allocator::PageAllocator};
+use crate::{arch::PageState, debug, memory::page_allocator::PageAllocator, info};
 
 use self::{
     boot::PlatformBootInfo,
@@ -92,14 +92,14 @@ impl PlatformImplementation {
         };
         let virtual_memory_manager =
             PlatformVirtualMemoryManager::new(kernel_page_table, physical_memory_offset);
-
+        info!("HAL: Setting kernel virtual addresses to global in the page table.");
         Self::walk_page_table(
             unsafe { kernel_page_table.as_mut().unwrap() },
             PageTableLevel::Four,
             physical_memory_offset.to_virtual_address(),
         );
 
-        debug!("Flushing TLB");
+        debug!("HAL: Flushing CPU Translation Lookaside buffer");
         tlb::flush_all();
 
         Self {
@@ -117,12 +117,6 @@ impl PlatformImplementation {
 
         let phys = level_4_table_frame.start_address();
         let virt = physical_memory_offset + phys.as_u64();
-
-        debug!(
-            "Using page table at physical address {:#014x} (virtual: {:#014x}) ",
-            phys.as_u64(),
-            virt.as_u64()
-        );
         let ptr: *mut PageTable = virt.as_mut_ptr();
         ptr
     }
