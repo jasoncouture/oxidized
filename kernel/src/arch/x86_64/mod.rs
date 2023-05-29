@@ -119,6 +119,7 @@ impl PlatformImplementation {
         }
     }
 
+    #[inline(always)]
     unsafe fn get_active_page_table_pointer(physical_memory_offset: VirtAddr) -> *mut PageTable {
         use x86_64::registers::control::Cr3;
 
