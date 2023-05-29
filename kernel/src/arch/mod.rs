@@ -46,12 +46,14 @@ pub enum PageState {
     Used,
     Free,
 }
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub struct PageRange {
     pub page_state: PageState,
     pub start: PlatformMemoryAddress,
     pub end: PlatformMemoryAddress,
 }
+
 impl PageRange {
     fn new(state: PageState, start: PlatformMemoryAddress, end: PlatformMemoryAddress) -> Self {
         Self {
@@ -60,6 +62,12 @@ impl PageRange {
             end,
         }
     }
+}
+
+pub(crate) trait VirtualMemoryManager {
+    fn map_page(&self, physical_address: PlatformMemoryAddress, virtual_address: PlatformMemoryAddress, flags: PageFlags);
+    fn set_page_flags(&self, virtual_address: PlatformMemoryAddress, flags: PageFlags);
+    fn get_page_flags(&self, virtual_address: PlatformMemoryAddress) -> Option<PageFlags>;
 }
 
 pub(crate) trait Platform {
