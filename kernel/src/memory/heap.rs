@@ -8,15 +8,13 @@ use buddyalloc::Heap;
 use spin::mutex::SpinMutex;
 
 // We will need a dynamically expandable heap...
-const HEAP_SIZE: usize = 1024*1024*128; // 128mb
+const HEAP_SIZE: usize = 1024 * 1024 * 128; // 128mb
 
 static mut EARLY_HEAP: [u8; HEAP_SIZE] = [0; HEAP_SIZE];
-
 
 #[global_allocator]
 pub(crate) static ALLOCATOR: LockedHeap<16> =
     LockedHeap::new(unsafe { &EARLY_HEAP as *const _ as *mut u8 }, HEAP_SIZE);
-
 
 #[derive(Debug)]
 pub(crate) struct LockedHeap<const N: usize>(SpinMutex<Heap<N>>);

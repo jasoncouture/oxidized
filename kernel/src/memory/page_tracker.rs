@@ -8,7 +8,7 @@ pub struct PageTracker {
 #[derive(Clone, Copy, Debug)]
 pub enum PageTrackerError {
     NotFound,
-    TrackerSizeCannotBeShrunk
+    TrackerSizeCannotBeShrunk,
 }
 
 impl PageTracker {
@@ -83,7 +83,10 @@ impl PageTracker {
 
         let mut end_index = start_index;
 
-        while start_index < self.data.len() && end_index < self.data.len() && (end_index - start_index) < count {
+        while start_index < self.data.len()
+            && end_index < self.data.len()
+            && (end_index - start_index) < count
+        {
             if self.data[end_index] || self.data[start_index] {
                 // start searching at the page after the current end, if this range doesn't fit, start_index + 1 won't either.
                 end_index = end_index + 1;
@@ -94,10 +97,9 @@ impl PageTracker {
         }
 
         if end_index - start_index < count {
-            return Err(PageTrackerError::NotFound)
+            return Err(PageTrackerError::NotFound);
         }
         Ok(start_index)
-        
     }
 
     pub fn find_free(&self, start_index: usize) -> Result<usize, PageTrackerError> {

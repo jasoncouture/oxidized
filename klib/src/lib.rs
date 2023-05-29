@@ -1,6 +1,6 @@
 #![no_std]
 
-use core::{arch::asm};
+use core::arch::asm;
 
 pub const KIB: usize = 1024usize;
 pub const MIB: usize = KIB * 1024;

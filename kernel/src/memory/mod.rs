@@ -1,30 +1,38 @@
-use crate::arch::{PLATFORM_VALID_PAGE_SIZES, x86_64::virtual_memory::PlatformMemoryAddressIntegerType};
+use crate::arch::{
+    x86_64::virtual_memory::PlatformMemoryAddressIntegerType, PLATFORM_VALID_PAGE_SIZES,
+};
 pub(crate) mod heap;
-pub mod page_tracker;
 pub mod page_allocator;
+pub mod page_tracker;
 
 #[derive(Debug, Clone, Copy)]
 pub struct MemoryRange {
     start_address: PlatformMemoryAddressIntegerType,
-    end_address: PlatformMemoryAddressIntegerType
+    end_address: PlatformMemoryAddressIntegerType,
 }
 
 pub enum MemoryRangeError {
     StartAddressGreaterThanEndAddress,
     EmptyRange,
-    RangeNotPageAligned
+    RangeNotPageAligned,
 }
 
 impl MemoryRange {
-    pub fn new(start_address: PlatformMemoryAddressIntegerType, end_address: PlatformMemoryAddressIntegerType) -> Result<Self, MemoryRangeError> {
+    pub fn new(
+        start_address: PlatformMemoryAddressIntegerType,
+        end_address: PlatformMemoryAddressIntegerType,
+    ) -> Result<Self, MemoryRangeError> {
         if start_address > end_address {
             return Err(MemoryRangeError::StartAddressGreaterThanEndAddress);
         } else if start_address == end_address {
             return Err(MemoryRangeError::EmptyRange);
         } else if (end_address - start_address) % PLATFORM_VALID_PAGE_SIZES[0] != 0 {
-            return Err(MemoryRangeError::RangeNotPageAligned)
+            return Err(MemoryRangeError::RangeNotPageAligned);
         }
-        Ok(Self{start_address, end_address})
+        Ok(Self {
+            start_address,
+            end_address,
+        })
     }
     pub fn size(&self) -> PlatformMemoryAddressIntegerType {
         self.end_address - self.start_address

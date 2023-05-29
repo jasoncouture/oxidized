@@ -1,5 +1,8 @@
 pub(crate) use self::x86_64::PLATFORM_VALID_PAGE_SIZES;
-use self::x86_64::{NativePageFlags, PlatformImplementation, virtual_memory::PlatformVirtualMemoryManager, boot::PlatformBootInfo};
+use self::x86_64::{
+    boot::PlatformBootInfo, virtual_memory::PlatformVirtualMemoryManager, NativePageFlags,
+    PlatformImplementation,
+};
 use alloc::vec::Vec;
 use bitflags::bitflags;
 
@@ -65,15 +68,17 @@ impl PageRange {
     }
 }
 
-
-
 pub(crate) trait VirtualMemoryManager {
-    fn map_page(&mut self, physical_address: PlatformMemoryAddress, virtual_address: PlatformMemoryAddress, flags: PageFlags);
+    fn map_page(
+        &mut self,
+        physical_address: PlatformMemoryAddress,
+        virtual_address: PlatformMemoryAddress,
+        flags: PageFlags,
+    );
     fn set_page_flags(&mut self, virtual_address: PlatformMemoryAddress, flags: PageFlags);
     fn get_page_flags(&mut self, virtual_address: PlatformMemoryAddress) -> Option<PageFlags>;
     fn flush_all(&self);
     fn flush(&self, virtual_address: PlatformMemoryAddress);
-
 }
 
 pub(crate) trait Platform {

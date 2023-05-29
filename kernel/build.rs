@@ -83,7 +83,7 @@ fn build_assembly_file(file: &Path, base_path: &PathBuf) -> PathBuf {
     };
 
     let output_file = output_file.to_str().unwrap();
-    
+
     let status = Command::new("nasm")
         .arg("-f")
         .arg("bin")

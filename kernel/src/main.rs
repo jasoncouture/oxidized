@@ -23,7 +23,10 @@ extern crate alloc;
 use arch::Hal;
 use klib::get_size_suffix_and_divisior;
 
-use crate::{arch::{PageState, Platform}, memory::page_allocator::PageAllocator};
+use crate::{
+    arch::{PageState, Platform},
+    memory::page_allocator::PageAllocator,
+};
 
 fn kmain(hal: &mut Hal) {
     info!("HAL Initialized for {}", hal.get_platform_arch());
@@ -48,14 +51,15 @@ fn kmain(hal: &mut Hal) {
     let size_suffix_and_divisor = get_size_suffix_and_divisior(memory_reserved_bytes);
     info!(
         "Reserved system memory: {}{}",
-        memory_reserved_bytes / size_suffix_and_divisor.1 + 1, 
+        memory_reserved_bytes / size_suffix_and_divisor.1 + 1,
         size_suffix_and_divisor.0
     );
 
-    let size_suffix_and_divisor = get_size_suffix_and_divisior(memory_size_bytes - memory_reserved_bytes);
+    let size_suffix_and_divisor =
+        get_size_suffix_and_divisior(memory_size_bytes - memory_reserved_bytes);
     info!(
         "Free memory at boot:    {}{}",
-        (memory_size_bytes - memory_reserved_bytes) / size_suffix_and_divisor.1+1,
+        (memory_size_bytes - memory_reserved_bytes) / size_suffix_and_divisor.1 + 1,
         size_suffix_and_divisor.0
     );
 
