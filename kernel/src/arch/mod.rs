@@ -1,5 +1,5 @@
 pub(crate) use self::x86_64::PLATFORM_VALID_PAGE_SIZES;
-use self::x86_64::{NativePageFlags, PlatformBootInfo, PlatformImplementation, virtual_memory::PlatformVirtualMemoryManager};
+use self::x86_64::{NativePageFlags, PlatformImplementation, virtual_memory::PlatformVirtualMemoryManager, boot::PlatformBootInfo};
 use alloc::vec::Vec;
 use bitflags::bitflags;
 

@@ -1,22 +1,21 @@
 pub mod virtual_memory;
+pub mod boot;
 
-use alloc::{boxed::Box, vec::Vec};
-use bootloader_api::{config::Mapping, BootInfo};
+use alloc::vec::Vec;
 use klib::kmemset;
 use x86_64::{
     instructions::tlb,
     structures::paging::{
-        page_table::{PageTableEntry, PageTableLevel, self},
-        PageTable, PageTableFlags, PhysFrame, Size4KiB, FrameAllocator,
-    },
-    PhysAddr, VirtAddr,
+        page_table::{PageTableEntry, PageTableLevel},
+        PageTable, PageTableFlags,
+    }, VirtAddr,
 };
 
-use crate::{arch::PageState, debug, info, kmain, memory::page_allocator::PageAllocator};
+use crate::{arch::PageState, debug, info, memory::page_allocator::PageAllocator};
 
-use self::virtual_memory::{PlatformMemoryAddressIntegerType, PlatformVirtualMemoryManager};
+use self::{virtual_memory::{PlatformMemoryAddressIntegerType, PlatformVirtualMemoryManager}, boot::PlatformBootInfo};
 
-use super::{PageRange, Platform, PlatformMemoryAddress, VirtualMemoryManager, MemoryManager};
+use super::{PageRange, Platform, PlatformMemoryAddress, MemoryManager};
 
 pub(crate) type NativePageFlags = PageTableFlags;
 pub const PLATFORM_VALID_PAGE_SIZES: [PlatformMemoryAddressIntegerType; 1] = [0x1000u64];
@@ -24,7 +23,7 @@ pub const PLATFORM_VALID_PAGE_SIZES: [PlatformMemoryAddressIntegerType; 1] = [0x
 #[derive(Debug, Clone, Copy)]
 pub(crate) struct PlatformImplementation {
     kernel_virtual_memory_manager: PlatformVirtualMemoryManager, //&'static PageTable,
-    boot_info: &'static BootInfo,
+    boot_info: &'static PlatformBootInfo,
     kernel_page_table: *mut PageTable
 }
 
@@ -190,27 +189,4 @@ impl Platform for PlatformImplementation {
     }
 }
 
-pub type PlatformBootInfo = BootInfo;
 
-// Boot code for platform.
-
-#[allow(unreachable_code)]
-fn _entry(boot_info: &'static mut BootInfo) -> ! {
-    let mut hal = super::initialize_hal(boot_info);
-    kmain(&mut hal);
-    panic!("Kernel main exited");
-}
-
-const KERNEL_ADDRESS_RANGE_START: u64 = 0x0000000000100000u64;
-const KERNEL_ADDRESS_RANGE_END: u64 = 0x0000FFFFFFFFFFFFu64;
-const CONFIG: bootloader_api::BootloaderConfig = {
-    let mut config = bootloader_api::BootloaderConfig::new_default();
-    config.mappings.aslr = true;
-    config.mappings.physical_memory = Some(Mapping::Dynamic);
-    config.mappings.dynamic_range_start = Some(KERNEL_ADDRESS_RANGE_START);
-    config.mappings.dynamic_range_end = Some(KERNEL_ADDRESS_RANGE_END);
-    config.mappings.ramdisk_memory = Mapping::Dynamic;
-    config
-};
-
-bootloader_api::entry_point!(_entry, config = &CONFIG);
