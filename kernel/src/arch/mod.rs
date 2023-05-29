@@ -1,11 +1,12 @@
 pub(crate) use self::x86_64::PLATFORM_VALID_PAGE_SIZES;
-use self::x86_64::{NativePageFlags, PlatformBootInfo, PlatformImplementation};
+use self::x86_64::{NativePageFlags, PlatformBootInfo, PlatformImplementation, virtual_memory::PlatformVirtualMemoryManager};
 use alloc::vec::Vec;
 use bitflags::bitflags;
 
 #[cfg(target_arch = "x86_64")]
 pub(crate) use self::x86_64::virtual_memory::PlatformMemoryAddress;
 pub(crate) type Hal = PlatformImplementation;
+pub(crate) type MemoryManager = PlatformVirtualMemoryManager;
 
 #[cfg(target_arch = "x86_64")]
 pub(crate) mod x86_64;
@@ -64,10 +65,15 @@ impl PageRange {
     }
 }
 
+
+
 pub(crate) trait VirtualMemoryManager {
-    fn map_page(&self, physical_address: PlatformMemoryAddress, virtual_address: PlatformMemoryAddress, flags: PageFlags);
-    fn set_page_flags(&self, virtual_address: PlatformMemoryAddress, flags: PageFlags);
-    fn get_page_flags(&self, virtual_address: PlatformMemoryAddress) -> Option<PageFlags>;
+    fn map_page(&mut self, physical_address: PlatformMemoryAddress, virtual_address: PlatformMemoryAddress, flags: PageFlags);
+    fn set_page_flags(&mut self, virtual_address: PlatformMemoryAddress, flags: PageFlags);
+    fn get_page_flags(&mut self, virtual_address: PlatformMemoryAddress) -> Option<PageFlags>;
+    fn flush_all(&self);
+    fn flush(&self, virtual_address: PlatformMemoryAddress);
+
 }
 
 pub(crate) trait Platform {
@@ -98,6 +104,8 @@ pub(crate) trait Platform {
         compacted
     }
     fn get_platform_arch(&self) -> &str;
+    fn get_kernel_memory_manager(&self) -> MemoryManager;
+    fn new_memory_manager(&self) -> MemoryManager;
 }
 
 pub(crate) fn initialize_hal(boot_info: &'static mut PlatformBootInfo) -> PlatformImplementation {

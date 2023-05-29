@@ -2,19 +2,21 @@ pub mod virtual_memory;
 
 use alloc::{boxed::Box, vec::Vec};
 use bootloader_api::{config::Mapping, BootInfo};
+use klib::kmemset;
 use x86_64::{
+    instructions::tlb,
     structures::paging::{
-        PageTable, PageTableFlags,
-        PhysFrame, Size4KiB,
+        page_table::{PageTableEntry, PageTableLevel, self},
+        PageTable, PageTableFlags, PhysFrame, Size4KiB, FrameAllocator,
     },
     PhysAddr, VirtAddr,
 };
 
-use crate::{arch::PageState, debug, info, kmain};
+use crate::{arch::PageState, debug, info, kmain, memory::page_allocator::PageAllocator};
 
 use self::virtual_memory::{PlatformMemoryAddressIntegerType, PlatformVirtualMemoryManager};
 
-use super::{PageRange, Platform, VirtualMemoryManager, PlatformMemoryAddress};
+use super::{PageRange, Platform, PlatformMemoryAddress, VirtualMemoryManager, MemoryManager};
 
 pub(crate) type NativePageFlags = PageTableFlags;
 pub const PLATFORM_VALID_PAGE_SIZES: [PlatformMemoryAddressIntegerType; 1] = [0x1000u64];
@@ -23,11 +25,66 @@ pub const PLATFORM_VALID_PAGE_SIZES: [PlatformMemoryAddressIntegerType; 1] = [0x
 pub(crate) struct PlatformImplementation {
     kernel_virtual_memory_manager: PlatformVirtualMemoryManager, //&'static PageTable,
     boot_info: &'static BootInfo,
+    kernel_page_table: *mut PageTable
 }
 
-
-
 impl PlatformImplementation {
+    fn setup_page_table_entry(
+        page_table_entry: &mut PageTableEntry,
+        level: PageTableLevel,
+        physical_memory_offset: VirtAddr,
+    ) {
+        if page_table_entry.is_unused() {
+            return;
+        }
+
+        if page_table_entry.flags().contains(PageTableFlags::HUGE_PAGE)
+            && level != PageTableLevel::One
+        {
+            Self::set_kernel_space_flags(page_table_entry, level);
+            return;
+        }
+
+        if level == PageTableLevel::One {
+            Self::set_kernel_space_flags(page_table_entry, level);
+        } else {
+            let next = unsafe {
+                (page_table_entry.addr().as_u64() + physical_memory_offset.as_u64())
+                    as *mut PageTable
+            };
+            let next = unsafe { next.as_mut().unwrap() };
+            Self::walk_page_table(
+                next,
+                level.next_lower_level().unwrap(),
+                physical_memory_offset,
+            );
+        }
+    }
+
+    fn set_kernel_space_flags(page_table_entry: &mut PageTableEntry, level: PageTableLevel) {
+        let flags = PageTableFlags::from_bits(
+            (page_table_entry.flags().bits() | PageTableFlags::GLOBAL.bits())
+                & PageTableFlags::USER_ACCESSIBLE.complement().bits(),
+        )
+        .unwrap();
+        debug!(
+            "Setting flags {:?} on entry for address: {:p} at page table level: {:?}",
+            flags,
+            page_table_entry.addr().as_u64() as *const u8,
+            level
+        );
+        page_table_entry.set_flags(flags);
+    }
+
+    fn walk_page_table(
+        page_table: &mut PageTable,
+        level: PageTableLevel,
+        physical_memory_offset: VirtAddr,
+    ) {
+        for page_table_entry in page_table.iter_mut() {
+            Self::setup_page_table_entry(page_table_entry, level, physical_memory_offset);
+        }
+    }
     pub fn new(boot_info: &'static mut PlatformBootInfo) -> Self {
         let physical_memory_offset = PlatformMemoryAddress::from(
             boot_info
@@ -39,16 +96,31 @@ impl PlatformImplementation {
             "Initializing HAL, with base address {:#014x}",
             physical_memory_offset.to_virtual_address().as_u64()
         );
-
+        let kernel_page_table = unsafe {
+            Self::get_active_page_table_pointer(physical_memory_offset.to_virtual_address())
+        };
         let virtual_memory_manager = PlatformVirtualMemoryManager::new(
-            unsafe {
-                Self::get_active_page_table_pointer(physical_memory_offset.to_virtual_address())
-            },
+            kernel_page_table,
             physical_memory_offset,
         );
+
+        Self::walk_page_table(
+            unsafe {
+                Self::get_active_page_table_pointer(physical_memory_offset.to_virtual_address())
+                    .as_mut()
+                    .unwrap()
+            },
+            PageTableLevel::Four,
+            physical_memory_offset.to_virtual_address(),
+        );
+
+        debug!("Flushing TLB");
+        tlb::flush_all();
+
         Self {
             kernel_virtual_memory_manager: virtual_memory_manager,
             boot_info: boot_info,
+            kernel_page_table
         }
     }
 
@@ -67,6 +139,10 @@ impl PlatformImplementation {
         );
         let ptr: *mut PageTable = virt.as_mut_ptr();
         ptr
+    }
+
+    fn get_physical_memory_virtual_address(&self) -> PlatformMemoryAddress {
+        PlatformMemoryAddress::from(self.boot_info.physical_memory_offset.into_option().unwrap())
     }
 }
 
@@ -100,9 +176,23 @@ impl Platform for PlatformImplementation {
     fn get_platform_arch(&self) -> &str {
         "x86_64"
     }
+
+
+
+    fn get_kernel_memory_manager(&self) -> super::MemoryManager {
+        MemoryManager::new(self.kernel_page_table, self.get_physical_memory_virtual_address())
+    }
+
+    fn new_memory_manager(&self) -> super::MemoryManager {
+        let frame = PageAllocator::allocate_size(4096).unwrap();
+        kmemset(frame as usize, 0, 4096);
+        MemoryManager::new(frame as *mut PageTable, self.get_physical_memory_virtual_address())
+    }
 }
 
 pub type PlatformBootInfo = BootInfo;
+
+// Boot code for platform.
 
 #[allow(unreachable_code)]
 fn _entry(boot_info: &'static mut BootInfo) -> ! {

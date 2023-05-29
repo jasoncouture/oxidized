@@ -11,6 +11,10 @@ lazy_static! {
 pub(crate) struct PageAllocator {}
 
 impl PageAllocator {
+    #[inline(always)]
+    pub fn instance() -> Self {
+        Self{}
+    }
     pub(crate) fn initialize(hal: &mut Hal) {
         let memory_map = hal.get_compact_memory_map();
         let mut tracker = PAGE_TRACKER.lock();
