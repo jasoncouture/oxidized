@@ -104,11 +104,7 @@ impl PlatformImplementation {
         );
 
         Self::walk_page_table(
-            unsafe {
-                Self::get_active_page_table_pointer(physical_memory_offset.to_virtual_address())
-                    .as_mut()
-                    .unwrap()
-            },
+            unsafe { kernel_page_table.as_mut().unwrap() },
             PageTableLevel::Four,
             physical_memory_offset.to_virtual_address(),
         );
