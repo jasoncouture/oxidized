@@ -22,7 +22,7 @@ pub const PLATFORM_VALID_PAGE_SIZES: [PlatformMemoryAddressIntegerType; 1] = [0x
 
 #[derive(Debug, Clone, Copy)]
 pub(crate) struct PlatformImplementation {
-    kernel_virtual_memory_manager: PlatformVirtualMemoryManager, //&'static PageTable,
+    kernel_virtual_memory_manager: PlatformVirtualMemoryManager,
     boot_info: &'static PlatformBootInfo,
     kernel_page_table: *mut PageTable
 }
