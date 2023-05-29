@@ -1,4 +1,4 @@
-use crate::arch::{x86_64::PlatformMemoryAddressIntegerType, PLATFORM_VALID_PAGE_SIZES};
+use crate::arch::{PLATFORM_VALID_PAGE_SIZES, x86_64::virtual_memory::PlatformMemoryAddressIntegerType};
 pub(crate) mod heap;
 pub mod page_tracker;
 pub mod page_allocator;

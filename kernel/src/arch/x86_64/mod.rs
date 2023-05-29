@@ -12,8 +12,10 @@ use x86_64::{
 
 use crate::{arch::PageState, debug, info, kmain};
 
-use super::{PageRange, Platform, VirtualMemoryManager};
-pub(crate) type PlatformMemoryAddressIntegerType = u64;
+use self::virtual_memory::{PlatformMemoryAddressIntegerType, PlatformVirtualMemoryManager};
+
+use super::{PageRange, Platform, VirtualMemoryManager, PlatformMemoryAddress};
+
 pub(crate) type NativePageFlags = PageTableFlags;
 pub const PLATFORM_VALID_PAGE_SIZES: [PlatformMemoryAddressIntegerType; 1] = [0x1000u64];
 
@@ -23,74 +25,7 @@ pub(crate) struct PlatformImplementation {
     boot_info: &'static BootInfo,
 }
 
-#[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord)]
-pub(crate) struct PlatformVirtualMemoryManager {
-    page_table: *mut PageTable,
-    physical_memory_offset: PlatformMemoryAddress,
-}
-impl PlatformVirtualMemoryManager {
-    fn new(page_table: *mut PageTable, physical_offset: PlatformMemoryAddress) -> Self {
-        Self {
-            page_table,
-            physical_memory_offset: physical_offset,
-        }
-    }
-}
 
-impl VirtualMemoryManager for PlatformVirtualMemoryManager {
-    fn map_page(
-        &self,
-        physical_address: PlatformMemoryAddress,
-        virtual_address: PlatformMemoryAddress,
-        flags: super::PageFlags,
-    ) {
-        let page_table = unsafe { self.page_table.as_mut() }.unwrap();
-    }
-
-    fn set_page_flags(&self, virtual_address: PlatformMemoryAddress, flags: super::PageFlags) {
-        todo!()
-    }
-
-    fn get_page_flags(&self, virtual_address: PlatformMemoryAddress) -> Option<super::PageFlags> {
-        todo!()
-    }
-}
-
-#[repr(transparent)]
-#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
-pub struct PlatformMemoryAddress(PlatformMemoryAddressIntegerType);
-
-impl PlatformMemoryAddress {
-    pub fn from(address: PlatformMemoryAddressIntegerType) -> Self {
-        Self(address)
-    }
-    pub fn to_physical_address(&self) -> PhysAddr {
-        PhysAddr::new(self.0)
-    }
-
-    pub fn to_virtual_address(&self) -> VirtAddr {
-        VirtAddr::new(self.0)
-    }
-    pub fn to_platform_value(&self) -> PlatformMemoryAddressIntegerType {
-        self.0
-    }
-
-    pub fn from_page_number(page_number: usize) -> Self {
-        Self((page_number << 12) as u64)
-    }
-
-    pub(crate) fn to_page_number(&self) -> usize {
-        return (self.0 >> 12) as usize;
-    }
-
-    pub(crate) fn to_pointer(&self) -> *mut u8 {
-        self.0 as *mut u8
-    }
-
-    pub(crate) fn to_physical_frame(&self) -> Option<PhysFrame<Size4KiB>> {
-        Some(PhysFrame::from_start_address(self.to_physical_address()).unwrap())
-    }
-}
 
 impl PlatformImplementation {
     pub fn new(boot_info: &'static mut PlatformBootInfo) -> Self {

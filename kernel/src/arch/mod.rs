@@ -4,7 +4,7 @@ use alloc::vec::Vec;
 use bitflags::bitflags;
 
 #[cfg(target_arch = "x86_64")]
-pub(crate) use self::x86_64::PlatformMemoryAddress;
+pub(crate) use self::x86_64::virtual_memory::PlatformMemoryAddress;
 pub(crate) type Hal = PlatformImplementation;
 
 #[cfg(target_arch = "x86_64")]
