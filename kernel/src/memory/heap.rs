@@ -7,12 +7,11 @@ use core::{
 use buddyalloc::Heap;
 use spin::mutex::SpinMutex;
 
-use crate::debug;
-
 // We will need a dynamically expandable heap...
 const HEAP_SIZE: usize = 1024*1024*128; // 128mb
 
 static mut EARLY_HEAP: [u8; HEAP_SIZE] = [0; HEAP_SIZE];
+
 
 #[global_allocator]
 pub(crate) static ALLOCATOR: LockedHeap<16> =
@@ -35,13 +34,12 @@ impl<const N: usize> LockedHeap<N> {
         let mut heap = self.0.lock();
 
         let ptr = heap.allocate(layout).map_err(|_| AllocError)?;
-        debug!("ALLOC: {:p} - {:?}", ptr, layout);
+
         // SAFETY: The pointer is guaranteed to not be NULL if the heap didn't return an error.
         Ok(unsafe { NonNull::new_unchecked(slice::from_raw_parts_mut(ptr, layout.size())) })
     }
 
     unsafe fn heap_deallocate(&self, ptr: NonNull<u8>, layout: Layout) {
-        debug!("FREE : {:p} - {:?}", ptr, layout);
         let mut heap = self.0.lock();
         heap.deallocate(ptr.as_ptr(), layout);
     }
