@@ -23,7 +23,7 @@ extern crate alloc;
 use arch::Hal;
 use klib::get_size_suffix_and_divisior;
 
-use crate::arch::{PageState, Platform};
+use crate::{arch::{PageState, Platform}, memory::page_allocator::PageAllocator};
 
 fn kmain(hal: &mut Hal) {
     info!("HAL Initialized for {}", hal.get_platform_arch());
@@ -58,4 +58,11 @@ fn kmain(hal: &mut Hal) {
         (memory_size_bytes - memory_reserved_bytes) / size_suffix_and_divisor.1+1,
         size_suffix_and_divisor.0
     );
+
+    info!("Initializing page allocator");
+    PageAllocator::initialize(hal);
+    info!("Allocating a free page for funsies");
+    let page_pointer = PageAllocator::allocate_size(128).unwrap();
+    info!("Allocated page at address: {:p}", page_pointer);
+    PageAllocator::free_size(page_pointer, 128).unwrap();
 }

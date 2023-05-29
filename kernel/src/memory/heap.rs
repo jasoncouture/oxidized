@@ -9,13 +9,15 @@ use spin::mutex::SpinMutex;
 
 use crate::debug;
 
+// We will need a dynamically expandable heap...
 const HEAP_SIZE: usize = 1024*1024*128; // 128mb
 
 static mut EARLY_HEAP: [u8; HEAP_SIZE] = [0; HEAP_SIZE];
 
 #[global_allocator]
-static ALLOCATOR: LockedHeap<16> =
+pub(crate) static ALLOCATOR: LockedHeap<16> =
     LockedHeap::new(unsafe { &EARLY_HEAP as *const _ as *mut u8 }, HEAP_SIZE);
+
 
 #[derive(Debug)]
 struct LockedHeap<const N: usize>(SpinMutex<Heap<N>>);
