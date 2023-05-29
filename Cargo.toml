@@ -13,6 +13,6 @@ members = [
 ovmf-prebuilt = "0.1.0-alpha.1"
 
 [build-dependencies]
-bootloader = "0.11"
+bootloader = {version = "0.11", default_features = false, features = ["uefi"] }
 kernel = { path = "kernel", artifact = "bin", target = "x86_64-unknown-none" }
 
