@@ -11,7 +11,7 @@ use x86_64::{
     }, VirtAddr,
 };
 
-use crate::{arch::PageState, debug, info, memory::page_allocator::PageAllocator};
+use crate::{arch::PageState, debug, memory::page_allocator::PageAllocator};
 
 use self::{virtual_memory::{PlatformMemoryAddressIntegerType, PlatformVirtualMemoryManager}, boot::PlatformBootInfo};
 
