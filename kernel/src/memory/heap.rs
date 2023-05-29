@@ -20,7 +20,7 @@ pub(crate) static ALLOCATOR: LockedHeap<16> =
 
 
 #[derive(Debug)]
-struct LockedHeap<const N: usize>(SpinMutex<Heap<N>>);
+pub(crate) struct LockedHeap<const N: usize>(SpinMutex<Heap<N>>);
 
 impl<const N: usize> LockedHeap<N> {
     pub const fn new(heap_address: *mut u8, size: usize) -> Self {
