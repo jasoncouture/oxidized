@@ -65,12 +65,6 @@ impl PlatformImplementation {
                 & PageTableFlags::USER_ACCESSIBLE.complement().bits(),
         )
         .unwrap();
-        debug!(
-            "Setting flags {:?} on entry for address: {:p} at page table level: {:?}",
-            flags,
-            page_table_entry.addr().as_u64() as *const u8,
-            level
-        );
         page_table_entry.set_flags(flags);
     }
 
@@ -89,10 +83,6 @@ impl PlatformImplementation {
                 .physical_memory_offset
                 .into_option()
                 .unwrap_or_default(),
-        );
-        info!(
-            "Initializing HAL, with base address {:#014x}",
-            physical_memory_offset.to_virtual_address().as_u64()
         );
         let kernel_page_table = unsafe {
             Self::get_active_page_table_pointer(physical_memory_offset.to_virtual_address())
