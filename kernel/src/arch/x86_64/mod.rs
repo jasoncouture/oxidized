@@ -47,10 +47,9 @@ impl PlatformImplementation {
         if level == PageTableLevel::One {
             Self::set_kernel_space_flags(page_table_entry, level);
         } else {
-            let next = unsafe {
+            let next = 
                 (page_table_entry.addr().as_u64() + physical_memory_offset.as_u64())
-                    as *mut PageTable
-            };
+                    as *mut PageTable;
             let next = unsafe { next.as_mut().unwrap() };
             Self::walk_page_table(
                 next,
